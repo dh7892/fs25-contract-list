@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8" standalone="no" ?>
+<l10n>
+    <texts>
+        <!-- General -->
+        <text name="contractList_modName" text="Auftragsliste"/>
+        <text name="contractList_toggleAction" text="Auftragsliste umschalten"/>
+
+        <!-- Panel titles -->
+        <text name="contractList_titleActive" text="Aktive Auftraege"/>
+        <text name="contractList_titleAvailable" text="Verfuegbare Auftraege"/>
+
+        <!-- Status labels -->
+        <text name="contractList_statusRunning" text="In Bearbeitung"/>
+        <text name="contractList_statusFinished" text="Abgeschlossen"/>
+        <text name="contractList_statusAvailable" text="Verfuegbar"/>
+
+        <!-- Buttons -->
+        <text name="contractList_collectPayment" text="Einsammeln"/>
+        <text name="contractList_acceptBorrow" text="Annehmen + Leihen"/>
+        <text name="contractList_acceptNoBorrow" text="Annehmen"/>
+        <text name="contractList_cancel" text="Abbrechen"/>
+        <text name="contractList_hide" text="Ausblenden"/>
+
+        <!-- Column headers -->
+        <text name="contractList_colType" text="Typ"/>
+        <text name="contractList_colField" text="Feld"/>
+        <text name="contractList_colReward" text="Belohnung"/>
+        <text name="contractList_colProgress" text="Fortschritt"/>
+
+        <!-- Messages -->
+        <text name="contractList_noActiveContracts" text="Keine aktiven Auftraege"/>
+        <text name="contractList_noAvailableContracts" text="Keine verfuegbaren Auftraege"/>
+        <text name="contractList_contractLimitReached" text="Auftragslimit erreicht"/>
+    </texts>
+</l10n>

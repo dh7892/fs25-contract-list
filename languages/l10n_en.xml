@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8" standalone="no" ?>
+<l10n>
+    <texts>
+        <!-- General -->
+        <text name="contractList_modName" text="Contract List"/>
+        <text name="contractList_toggleAction" text="Toggle Contract List"/>
+
+        <!-- Panel titles -->
+        <text name="contractList_titleActive" text="Active Contracts"/>
+        <text name="contractList_titleAvailable" text="Available Contracts"/>
+
+        <!-- Status labels -->
+        <text name="contractList_statusRunning" text="In Progress"/>
+        <text name="contractList_statusFinished" text="Finished"/>
+        <text name="contractList_statusAvailable" text="Available"/>
+
+        <!-- Buttons -->
+        <text name="contractList_collectPayment" text="Collect"/>
+        <text name="contractList_acceptBorrow" text="Accept + Borrow"/>
+        <text name="contractList_acceptNoBorrow" text="Accept"/>
+        <text name="contractList_cancel" text="Cancel"/>
+        <text name="contractList_hide" text="Hide"/>
+
+        <!-- Column headers -->
+        <text name="contractList_colType" text="Type"/>
+        <text name="contractList_colField" text="Field"/>
+        <text name="contractList_colReward" text="Reward"/>
+        <text name="contractList_colProgress" text="Progress"/>
+
+        <!-- Messages -->
+        <text name="contractList_noActiveContracts" text="No active contracts"/>
+        <text name="contractList_noAvailableContracts" text="No available contracts"/>
+        <text name="contractList_contractLimitReached" text="Contract limit reached"/>
+    </texts>
+</l10n>
