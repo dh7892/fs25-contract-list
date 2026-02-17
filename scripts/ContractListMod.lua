@@ -24,14 +24,21 @@ function ContractListMod:loadMap(filename)
     self.hud = ContractListHud.new()
     self.hud:init()
 
+    -- Register input action for toggling the panel
+    self:registerInput()
+
     self.isLoaded = true
     Logging.info("[ContractList] Mod loaded successfully")
 end
 
---- Register input actions. Called by the engine when the input context is ready.
--- This is the proper place to register action events so they appear in Settings > Controls.
-function ContractListMod:registerActionEvents()
-    -- Register toggle action
+--- Register the toggle keybinding action.
+function ContractListMod:registerInput()
+    -- Check if the InputAction exists (it should if modDesc.xml loaded correctly)
+    if InputAction.CONTRACTLIST_TOGGLE == nil then
+        Logging.warning("[ContractList] InputAction.CONTRACTLIST_TOGGLE not found - keybinding may not work")
+        return
+    end
+
     local _, toggleEventId = g_inputBinding:registerActionEvent(
         InputAction.CONTRACTLIST_TOGGLE,
         self,
@@ -47,9 +54,9 @@ function ContractListMod:registerActionEvents()
         g_inputBinding:setActionEventTextPriority(toggleEventId, GS_PRIO_NORMAL)
         g_inputBinding:setActionEventText(toggleEventId, g_i18n:getText("contractList_toggleAction"))
         g_inputBinding:setActionEventTextVisibility(toggleEventId, true)
-        Logging.info("[ContractList] Input action registered")
+        Logging.info("[ContractList] Input action registered (eventId: %s)", tostring(toggleEventId))
     else
-        Logging.warning("[ContractList] Failed to register input action CONTRACTLIST_TOGGLE")
+        Logging.warning("[ContractList] Failed to register input action - registerActionEvent returned nil")
     end
 end
 
@@ -57,6 +64,12 @@ end
 -- @param actionName string Name of the triggered action
 -- @param inputValue number Input value
 function ContractListMod:onToggleAction(actionName, inputValue)
+    Logging.info("[ContractList] onToggleAction fired")
+    self:togglePanel()
+end
+
+--- Toggle the panel visibility and manage mouse cursor.
+function ContractListMod:togglePanel()
     if self.hud ~= nil then
         local visible = self.hud:toggleVisible()
 
@@ -105,12 +118,23 @@ function ContractListMod:mouseEvent(posX, posY, isDown, isUp, button)
 end
 
 --- Called for keyboard input events.
+-- Provides a fallback toggle if the action event system isn't working.
 -- @param unicode number Unicode character code
 -- @param sym number Key symbol
 -- @param modifier number Modifier key flags
 -- @param isDown boolean Key pressed down
 function ContractListMod:keyEvent(unicode, sym, modifier, isDown)
-    -- Future: keyboard navigation within the panel
+    if not self.isLoaded or not isDown then
+        return
+    end
+
+    -- Fallback: if the registered action event isn't working,
+    -- detect Right Ctrl + C directly as an emergency toggle.
+    -- Input.KEY_rctrl = 285, Input.KEY_c = 46
+    if sym == Input.KEY_c and modifier == Input.MOD_RCTRL then
+        Logging.info("[ContractList] Fallback keyEvent toggle triggered (RCtrl+C)")
+        self:togglePanel()
+    end
 end
 
 --- Called when the map is being unloaded. Clean up.
