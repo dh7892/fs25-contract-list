@@ -28,11 +28,40 @@ ContractListUtil.TYPE_DISPLAY_NAMES = {
 }
 
 --- Get the current player's farm ID.
+-- Tries multiple access paths as the API varies between FS versions.
 -- @return number farmId
 function ContractListUtil.getFarmId()
+    -- Method 1: Direct player farmId
     if g_currentMission ~= nil and g_currentMission.player ~= nil then
-        return g_currentMission.player.farmId
+        if g_currentMission.player.farmId ~= nil then
+            return g_currentMission.player.farmId
+        end
     end
+
+    -- Method 2: Via accessHandler
+    if g_currentMission ~= nil and g_currentMission.accessHandler ~= nil then
+        local success, farmId = pcall(function()
+            return g_currentMission.accessHandler:getFarmId()
+        end)
+        if success and farmId ~= nil then
+            return farmId
+        end
+    end
+
+    -- Method 3: Via farmManager, get first non-spectator farm
+    if g_farmManager ~= nil then
+        local success, farms = pcall(function()
+            return g_farmManager:getFarms()
+        end)
+        if success and farms ~= nil then
+            for _, farm in ipairs(farms) do
+                if farm.farmId ~= nil and farm.farmId ~= FarmManager.SPECTATOR_FARM_ID then
+                    return farm.farmId
+                end
+            end
+        end
+    end
+
     return FarmManager.SPECTATOR_FARM_ID
 end
 
@@ -50,6 +79,22 @@ function ContractListUtil.getActiveContracts()
     local missions = g_missionManager:getMissions()
     if missions == nil then
         return result
+    end
+
+    -- Log diagnostics once (first call only)
+    if not ContractListUtil._hasLoggedDiag then
+        ContractListUtil._hasLoggedDiag = true
+        Logging.info("[ContractList] Diagnostics: farmId=%s, total missions=%d",
+            tostring(farmId), #missions)
+        for i, m in ipairs(missions) do
+            if i <= 10 then
+                Logging.info("[ContractList]   mission[%d]: status=%s, farmId=%s, type=%s",
+                    i,
+                    tostring(m.status),
+                    tostring(m.farmId),
+                    m.type and m.type.name or "nil")
+            end
+        end
     end
 
     for _, mission in ipairs(missions) do

@@ -173,8 +173,12 @@ function ContractListHud:draw()
     self.headerOverlay:setDimension(pw, headerH)
     self.headerOverlay:render()
 
-    -- Draw title text
-    local titleText = g_i18n:getText("contractList_titleActive")
+    -- Get contract data (before title so we can show count)
+    local contracts = ContractListUtil.getActiveContracts()
+    self.totalRows = #contracts
+
+    -- Draw title text with count
+    local titleText = string.format("%s (%d)", g_i18n:getText("contractList_titleActive"), self.totalRows)
     setTextColor(unpack(ContractListHud.COLOR_TITLE))
     setTextBold(true)
     setTextAlignment(RenderText.ALIGN_LEFT)
@@ -185,10 +189,6 @@ function ContractListHud:draw()
         titleText
     )
     setTextBold(false)
-
-    -- Get contract data
-    local contracts = ContractListUtil.getActiveContracts()
-    self.totalRows = #contracts
 
     -- Calculate content area
     local contentTop = headerY - pad
