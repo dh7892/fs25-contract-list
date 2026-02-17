@@ -392,11 +392,19 @@ function ContractListHud:drawContractRow(mission, x, y, width, height, index, is
     renderText(x + pad, line1Y, ContractListHud.TEXT_SIZE_NORMAL, data.typeName)
     setTextBold(false)
 
-    -- Field description (dimmed, after type name)
+    -- Field + completion % (dimmed, after type name)
+    local afterType = getTextWidth(ContractListHud.TEXT_SIZE_NORMAL, data.typeName .. " ")
+    local detailParts = {}
     if data.fieldDesc ~= "" then
-        local typeW = getTextWidth(ContractListHud.TEXT_SIZE_NORMAL, data.typeName .. " ")
+        table.insert(detailParts, data.fieldDesc)
+    end
+    if data.isRunning then
+        table.insert(detailParts, string.format("%d%%", math.floor(data.completion * 100)))
+    end
+    if #detailParts > 0 then
+        local detailStr = table.concat(detailParts, " | ")
         setTextColor(unpack(ContractListHud.COLOR_TEXT_DIM))
-        renderText(x + pad + typeW, line1Y, ContractListHud.TEXT_SIZE_NORMAL, data.fieldDesc)
+        renderText(x + pad + afterType, line1Y, ContractListHud.TEXT_SIZE_NORMAL, detailStr)
     end
 
     -- Reward (right-aligned on line 1)
@@ -405,7 +413,7 @@ function ContractListHud:drawContractRow(mission, x, y, width, height, index, is
     setTextAlignment(RenderText.ALIGN_RIGHT)
     renderText(x + width - pad, line1Y, ContractListHud.TEXT_SIZE_NORMAL, rewardStr)
 
-    -- == Line 2: NPC (left) | Status or progress (right) ==
+    -- == Line 2: NPC (left) | buttons (right) ==
     local line2Y = line1Y - ContractListHud.TEXT_SIZE_SMALL - lineGap
 
     -- NPC name
@@ -413,18 +421,6 @@ function ContractListHud:drawContractRow(mission, x, y, width, height, index, is
         setTextColor(unpack(ContractListHud.COLOR_TEXT_DIM))
         setTextAlignment(RenderText.ALIGN_LEFT)
         renderText(x + pad, line2Y, ContractListHud.TEXT_SIZE_SMALL, data.npcName)
-    end
-
-    -- Vehicle cost (if any, shown after NPC)
-    if data.vehicleCost > 0 then
-        local costStr = "Equipment: " .. ContractListUtil.formatMoney(data.vehicleCost)
-        local npcW = 0
-        if data.npcName ~= "" then
-            npcW = getTextWidth(ContractListHud.TEXT_SIZE_SMALL, data.npcName .. "  ")
-        end
-        setTextColor(unpack(ContractListHud.COLOR_TEXT_DIM))
-        setTextAlignment(RenderText.ALIGN_LEFT)
-        renderText(x + pad + npcW, line2Y, ContractListHud.TEXT_SIZE_SMALL, costStr)
     end
 
     -- Status / progress / buttons (right side of line 2)
@@ -464,35 +460,10 @@ function ContractListHud:drawContractRow(mission, x, y, width, height, index, is
         })
 
     elseif data.isRunning then
-        -- Progress bar
+        -- "Cancel" button
         local btnText = g_i18n:getText("contractList_cancel")
         local btnTextW = getTextWidth(ContractListHud.TEXT_SIZE_SMALL, btnText)
         local btnW = btnTextW + btnPad * 4
-        local progressW = width - pad * 2 - btnW - pad
-        local progressH = ContractListHud.PROGRESS_HEIGHT
-        local progressX = x + pad
-        local progressY = btnY + btnH * 0.5 - progressH * 0.5
-
-        self.progressBgOverlay:setColor(unpack(ContractListHud.COLOR_PROGRESS_BG))
-        self.progressBgOverlay:setPosition(progressX, progressY)
-        self.progressBgOverlay:setDimension(progressW, progressH)
-        self.progressBgOverlay:render()
-
-        local fillW = progressW * data.completion
-        if fillW > 0 then
-            self.progressBarOverlay:setColor(unpack(ContractListHud.COLOR_PROGRESS_BAR))
-            self.progressBarOverlay:setPosition(progressX, progressY)
-            self.progressBarOverlay:setDimension(fillW, progressH)
-            self.progressBarOverlay:render()
-        end
-
-        -- Percentage text above progress bar
-        local pctStr = string.format("%d%%", math.floor(data.completion * 100))
-        setTextColor(unpack(ContractListHud.COLOR_YELLOW))
-        setTextAlignment(RenderText.ALIGN_LEFT)
-        renderText(progressX, line2Y, ContractListHud.TEXT_SIZE_SMALL, pctStr)
-
-        -- "Cancel" button to the right of progress bar
         local cancelBtnX = x + width - pad - btnW
         local cancelBtnHovered = (self.mouseX >= cancelBtnX and self.mouseX <= cancelBtnX + btnW
                               and self.mouseY >= btnY and self.mouseY <= btnY + btnH)
