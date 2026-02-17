@@ -86,15 +86,20 @@ function ContractListUtil.getActiveContracts()
         ContractListUtil._hasLoggedDiag = true
         Logging.info("[ContractList] Diagnostics: farmId=%s, total missions=%d",
             tostring(farmId), #missions)
+        -- Log only active missions (owned by this farm) for clearer diagnostics
+        local logCount = 0
         for i, m in ipairs(missions) do
-            if i <= 10 then
-                Logging.info("[ContractList]   mission[%d]: status=%s, farmId=%s, type=%s",
-                    i,
+            if m.farmId == farmId and (m.status == MissionStatus.RUNNING or m.status == MissionStatus.FINISHED) then
+                logCount = logCount + 1
+                Logging.info("[ContractList]   active[%d]: status=%s, farmId=%s, type=%s, field=%s",
+                    logCount,
                     tostring(m.status),
                     tostring(m.farmId),
-                    m.type and m.type.name or "nil")
+                    m.type and m.type.name or "nil",
+                    m.field and tostring(m.field.fieldId) or "nil")
             end
         end
+        Logging.info("[ContractList] Found %d active contracts for farm %s", logCount, tostring(farmId))
     end
 
     for _, mission in ipairs(missions) do
