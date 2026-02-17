@@ -16,6 +16,13 @@ ContractListMod.hud = nil
 ContractListMod.toggleEventId = nil
 ContractListMod.isLoaded = false
 
+-- Built-in progress bar suppression state
+ContractListMod.suppressBuiltinProgress = false
+ContractListMod._origAddSideNotificationProgressBar = nil
+ContractListMod._origMarkSideNotificationProgressBarForDrawing = nil
+ContractListMod._origRemoveSideNotificationProgressBar = nil
+ContractListMod._hudOverridesInstalled = false
+
 --- Called when the map is loaded. Initialize the mod.
 -- @param filename string Map filename
 function ContractListMod:loadMap(filename)
@@ -38,8 +45,117 @@ function ContractListMod:loadMap(filename)
     -- Load saved position
     self:loadSettings()
 
+    -- Install built-in progress bar suppression hooks
+    self:installProgressBarOverrides()
+
     self.isLoaded = true
     Logging.info("[ContractList] Mod loaded successfully")
+end
+
+--- Install overrides on the game HUD to conditionally suppress mission progress bars.
+-- When our panel is visible, the built-in side notification progress bars are suppressed.
+-- When our panel is hidden, they work normally.
+function ContractListMod:installProgressBarOverrides()
+    if self._hudOverridesInstalled then
+        return
+    end
+
+    -- g_currentMission.hud may not be available yet at loadMap time;
+    -- we'll try in update() if it fails here
+    if g_currentMission == nil or g_currentMission.hud == nil then
+        Logging.info("[ContractList] HUD not available yet, will install overrides later")
+        return
+    end
+
+    local hud = g_currentMission.hud
+
+    -- Check that the methods exist before overriding
+    if hud.addSideNotificationProgressBar == nil then
+        Logging.info("[ContractList] addSideNotificationProgressBar not found, skipping overrides")
+        return
+    end
+
+    -- Save originals
+    self._origAddSideNotificationProgressBar = hud.addSideNotificationProgressBar
+    self._origMarkSideNotificationProgressBarForDrawing = hud.markSideNotificationProgressBarForDrawing
+    self._origRemoveSideNotificationProgressBar = hud.removeSideNotificationProgressBar
+
+    -- Override: addSideNotificationProgressBar
+    -- When suppressed, return a dummy object so AbstractMission.update() doesn't error
+    hud.addSideNotificationProgressBar = function(hudSelf, title, subtitle, progress)
+        if ContractListMod.suppressBuiltinProgress then
+            return { progress = progress or 0, _isDummy = true }
+        end
+        return ContractListMod._origAddSideNotificationProgressBar(hudSelf, title, subtitle, progress)
+    end
+
+    -- Override: markSideNotificationProgressBarForDrawing
+    -- When suppressed, skip marking (so nothing draws)
+    hud.markSideNotificationProgressBarForDrawing = function(hudSelf, bar)
+        if ContractListMod.suppressBuiltinProgress then
+            return
+        end
+        if ContractListMod._origMarkSideNotificationProgressBarForDrawing ~= nil then
+            ContractListMod._origMarkSideNotificationProgressBarForDrawing(hudSelf, bar)
+        end
+    end
+
+    -- Override: removeSideNotificationProgressBar
+    -- Handle dummy bars gracefully (don't pass them to the original)
+    hud.removeSideNotificationProgressBar = function(hudSelf, bar)
+        if bar ~= nil and bar._isDummy then
+            return  -- dummy bar, nothing to remove
+        end
+        if ContractListMod._origRemoveSideNotificationProgressBar ~= nil then
+            ContractListMod._origRemoveSideNotificationProgressBar(hudSelf, bar)
+        end
+    end
+
+    self._hudOverridesInstalled = true
+    Logging.info("[ContractList] Built-in progress bar overrides installed")
+end
+
+--- Remove existing progress bars from all active missions and nil them out.
+-- Called when our panel opens so the bars disappear immediately.
+function ContractListMod:removeExistingProgressBars()
+    if g_missionManager == nil or g_currentMission == nil or g_currentMission.hud == nil then
+        return
+    end
+
+    local missions = g_missionManager:getMissions()
+    if missions == nil then
+        return
+    end
+
+    for _, mission in ipairs(missions) do
+        if mission.progressBar ~= nil and not mission.progressBar._isDummy then
+            local success, _ = pcall(function()
+                self._origRemoveSideNotificationProgressBar(g_currentMission.hud, mission.progressBar)
+            end)
+            if not success then
+                -- If remove failed, just nil it out
+            end
+        end
+        mission.progressBar = nil
+    end
+end
+
+--- Restore progress bars by clearing mission.progressBar so AbstractMission:update()
+-- recreates them on the next frame.
+function ContractListMod:clearProgressBarReferences()
+    if g_missionManager == nil then
+        return
+    end
+
+    local missions = g_missionManager:getMissions()
+    if missions == nil then
+        return
+    end
+
+    for _, mission in ipairs(missions) do
+        -- Nil out the progressBar so AbstractMission:update() will create a fresh one
+        mission.progressBar = nil
+    end
 end
 
 --- Load settings (panel position) from XML file.
@@ -184,6 +300,18 @@ function ContractListMod:togglePanel()
         if g_inputBinding ~= nil then
             g_inputBinding:setShowMouseCursor(visible)
         end
+
+        -- Suppress/restore built-in progress bars
+        if self._hudOverridesInstalled then
+            self.suppressBuiltinProgress = visible
+            if visible then
+                -- Panel opened: remove existing bars immediately
+                self:removeExistingProgressBars()
+            else
+                -- Panel closed: clear references so bars get recreated next frame
+                self:clearProgressBarReferences()
+            end
+        end
     end
 end
 
@@ -195,6 +323,11 @@ function ContractListMod:update(dt)
 
     -- Re-register input each frame to survive context changes
     self:registerInput()
+
+    -- Retry installing progress bar overrides if they weren't ready at load time
+    if not self._hudOverridesInstalled then
+        self:installProgressBarOverrides()
+    end
 end
 
 --- Called every frame for rendering.
@@ -230,6 +363,27 @@ function ContractListMod:deleteMap()
 
     -- Save settings before cleanup
     self:saveSettings()
+
+    -- Restore built-in progress bar functions
+    self.suppressBuiltinProgress = false
+    if self._hudOverridesInstalled and g_currentMission ~= nil and g_currentMission.hud ~= nil then
+        local hud = g_currentMission.hud
+        if self._origAddSideNotificationProgressBar ~= nil then
+            hud.addSideNotificationProgressBar = self._origAddSideNotificationProgressBar
+        end
+        if self._origMarkSideNotificationProgressBarForDrawing ~= nil then
+            hud.markSideNotificationProgressBarForDrawing = self._origMarkSideNotificationProgressBarForDrawing
+        end
+        if self._origRemoveSideNotificationProgressBar ~= nil then
+            hud.removeSideNotificationProgressBar = self._origRemoveSideNotificationProgressBar
+        end
+        self:clearProgressBarReferences()
+        Logging.info("[ContractList] Built-in progress bar overrides restored")
+    end
+    self._hudOverridesInstalled = false
+    self._origAddSideNotificationProgressBar = nil
+    self._origMarkSideNotificationProgressBarForDrawing = nil
+    self._origRemoveSideNotificationProgressBar = nil
 
     -- Remove input bindings
     if g_inputBinding ~= nil then
