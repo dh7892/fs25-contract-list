@@ -1,0 +1,35 @@
+name: Build Mod Zip
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build zip
+        run: |
+          # Collect mod files into a staging directory so the zip
+          # contains them at the root level (no parent folder).
+          mkdir -p staging
+          cp modDesc.xml staging/
+          cp -r scripts staging/
+          cp -r languages staging/
+
+          # Include icon if it exists (not yet created)
+          [ -f icon_contractList.dds ] && cp icon_contractList.dds staging/
+
+          cd staging
+          zip -r ../FS25_ContractList.zip . -x "*.DS_Store"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: FS25_ContractList
+          path: FS25_ContractList.zip
+          retention-days: 30
