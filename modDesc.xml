@@ -12,11 +12,11 @@
         <en><![CDATA[A toggleable HUD overlay that shows your contracts on the main game screen.
 Manage contracts without menu diving - view active contracts, collect payments, and accept new work with a single click.
 
-Default keybinding: Left Alt + C (rebindable in Settings > Controls)]]></en>
+Default keybinding: Left Ctrl + Period (rebindable in Settings > Controls)]]></en>
         <de><![CDATA[Ein umschaltbares HUD-Overlay, das Ihre Auftraege auf dem Hauptbildschirm anzeigt.
 Verwalten Sie Auftraege ohne Menue-Navigation - aktive Auftraege anzeigen, Zahlungen einsammeln und neue Arbeit mit einem Klick annehmen.
 
-Standard-Tastenbelegung: Linke Alt + C (aenderbar unter Einstellungen > Steuerung)]]></de>
+Standard-Tastenbelegung: Linke Strg + Punkt (aenderbar unter Einstellungen > Steuerung)]]></de>
     </description>
 
     <iconFilename>icon_contractList.dds</iconFilename>
@@ -36,7 +36,7 @@ Standard-Tastenbelegung: Linke Alt + C (aenderbar unter Einstellungen > Steuerun
 
     <inputBinding>
         <actionBinding action="CONTRACTLIST_TOGGLE">
-            <binding device="KB_MOUSE_DEFAULT" input="KEY_lalt KEY_c"/>
+            <binding device="KB_MOUSE_DEFAULT" input="KEY_lctrl KEY_period"/>
         </actionBinding>
     </inputBinding>
 </modDesc>

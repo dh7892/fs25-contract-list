@@ -6,6 +6,27 @@
 
 ContractListUtil = {}
 
+-- Human-readable names for mission types.
+-- Keys are the internal type names from mission.type.name.
+ContractListUtil.TYPE_DISPLAY_NAMES = {
+    harvestMission       = "Harvest",
+    sowMission           = "Sowing",
+    plowMission          = "Plowing",
+    cultivateMission     = "Cultivating",
+    fertilizeMission     = "Fertilizing",
+    herbicideMission     = "Spraying",
+    weedMission          = "Weeding",
+    hoeMission           = "Hoeing",
+    mowMission           = "Mowing",
+    tedderMission        = "Tedding",
+    baleMission          = "Baling",
+    baleWrapMission      = "Bale Wrapping",
+    stonePickMission     = "Stone Picking",
+    deadwoodMission      = "Deadwood",
+    treeTransportMission = "Tree Transport",
+    destructibleRockMission = "Rock Destruction",
+}
+
 --- Get the current player's farm ID.
 -- @return number farmId
 function ContractListUtil.getFarmId()
@@ -16,6 +37,7 @@ function ContractListUtil.getFarmId()
 end
 
 --- Get all active contracts (RUNNING or FINISHED) for the current farm.
+-- Returns them sorted: FINISHED first, then RUNNING sorted by completion descending.
 -- @return table Array of mission objects
 function ContractListUtil.getActiveContracts()
     local farmId = ContractListUtil.getFarmId()
@@ -38,13 +60,25 @@ function ContractListUtil.getActiveContracts()
         end
     end
 
+    -- Sort: finished contracts first, then by completion % descending
+    table.sort(result, function(a, b)
+        if a.status == MissionStatus.FINISHED and b.status ~= MissionStatus.FINISHED then
+            return true
+        elseif a.status ~= MissionStatus.FINISHED and b.status == MissionStatus.FINISHED then
+            return false
+        end
+
+        local compA = ContractListUtil.getCompletion(a)
+        local compB = ContractListUtil.getCompletion(b)
+        return compA > compB
+    end)
+
     return result
 end
 
 --- Get all available contracts (CREATED) visible to the current farm.
 -- @return table Array of mission objects
 function ContractListUtil.getAvailableContracts()
-    local farmId = ContractListUtil.getFarmId()
     local result = {}
 
     if g_missionManager == nil then
@@ -81,6 +115,10 @@ end
 -- @return string Human-readable type name
 function ContractListUtil.getMissionTypeName(mission)
     if mission.type ~= nil and mission.type.name ~= nil then
+        local displayName = ContractListUtil.TYPE_DISPLAY_NAMES[mission.type.name]
+        if displayName ~= nil then
+            return displayName
+        end
         return mission.type.name
     end
     return "Unknown"
@@ -97,4 +135,111 @@ function ContractListUtil.getFieldDescription(mission)
         end
     end
     return ""
+end
+
+--- Get the NPC name associated with a mission.
+-- @param mission table The mission object
+-- @return string NPC name or empty string
+function ContractListUtil.getNpcName(mission)
+    if mission.npc ~= nil and mission.npc.title ~= nil then
+        return mission.npc.title
+    end
+    -- Some missions store npc name differently
+    local success, npc = pcall(function() return mission:getNPC() end)
+    if success and npc ~= nil and npc.title ~= nil then
+        return npc.title
+    end
+    return ""
+end
+
+--- Get the reward for a mission, safely.
+-- @param mission table The mission object
+-- @return number Reward amount or 0
+function ContractListUtil.getReward(mission)
+    local success, reward = pcall(function() return mission:getReward() end)
+    if success and reward ~= nil then
+        return reward
+    end
+    return 0
+end
+
+--- Get the total reward (reward - vehicle costs + reimbursement) for a mission.
+-- @param mission table The mission object
+-- @return number Total reward or 0
+function ContractListUtil.getTotalReward(mission)
+    local success, reward = pcall(function() return mission:getTotalReward() end)
+    if success and reward ~= nil then
+        return reward
+    end
+    -- Fallback to base reward
+    return ContractListUtil.getReward(mission)
+end
+
+--- Get the vehicle costs for a mission.
+-- @param mission table The mission object
+-- @return number Vehicle costs or 0
+function ContractListUtil.getVehicleCosts(mission)
+    local success, costs = pcall(function() return mission:getVehicleCosts() end)
+    if success and costs ~= nil then
+        return costs
+    end
+    return 0
+end
+
+--- Get the completion fraction for a mission.
+-- @param mission table The mission object
+-- @return number Completion 0.0-1.0
+function ContractListUtil.getCompletion(mission)
+    if mission.status == MissionStatus.FINISHED then
+        return 1.0
+    end
+    local success, completion = pcall(function() return mission:getCompletion() end)
+    if success and completion ~= nil then
+        return completion
+    end
+    return 0
+end
+
+--- Format a money amount as a string.
+-- @param amount number The amount
+-- @return string Formatted string like "$12,345"
+function ContractListUtil.formatMoney(amount)
+    if amount == nil then
+        return "$0"
+    end
+
+    local formatted = tostring(math.floor(amount))
+    -- Insert commas for thousands
+    local result = ""
+    local count = 0
+    for i = #formatted, 1, -1 do
+        count = count + 1
+        result = string.sub(formatted, i, i) .. result
+        if count % 3 == 0 and i > 1 then
+            result = "," .. result
+        end
+    end
+
+    return "$" .. result
+end
+
+--- Build a structured data table for a mission suitable for display.
+-- @param mission table The mission object
+-- @return table {typeName, fieldDesc, npcName, reward, totalReward, vehicleCost, completion, isFinished, isRunning, mission}
+function ContractListUtil.getMissionDisplayData(mission)
+    local isFinished = mission.status == MissionStatus.FINISHED
+    local isRunning = mission.status == MissionStatus.RUNNING
+
+    return {
+        typeName    = ContractListUtil.getMissionTypeName(mission),
+        fieldDesc   = ContractListUtil.getFieldDescription(mission),
+        npcName     = ContractListUtil.getNpcName(mission),
+        reward      = ContractListUtil.getReward(mission),
+        totalReward = ContractListUtil.getTotalReward(mission),
+        vehicleCost = ContractListUtil.getVehicleCosts(mission),
+        completion  = ContractListUtil.getCompletion(mission),
+        isFinished  = isFinished,
+        isRunning   = isRunning,
+        mission     = mission,
+    }
 end

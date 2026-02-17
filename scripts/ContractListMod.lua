@@ -12,7 +12,7 @@ ContractListMod.MOD_DIR = g_currentModDirectory or ""
 
 -- Singleton instance state
 ContractListMod.hud = nil
-ContractListMod.inputEventId = nil
+ContractListMod.toggleEventId = nil
 ContractListMod.isLoaded = false
 
 --- Called when the map is loaded. Initialize the mod.
@@ -24,16 +24,15 @@ function ContractListMod:loadMap(filename)
     self.hud = ContractListHud.new()
     self.hud:init()
 
-    -- Register input action for toggling the panel
-    self:registerInput()
-
     self.isLoaded = true
     Logging.info("[ContractList] Mod loaded successfully")
 end
 
---- Register the toggle keybinding action.
-function ContractListMod:registerInput()
-    local _, eventId = g_inputBinding:registerActionEvent(
+--- Register input actions. Called by the engine when the input context is ready.
+-- This is the proper place to register action events so they appear in Settings > Controls.
+function ContractListMod:registerActionEvents()
+    -- Register toggle action
+    local _, toggleEventId = g_inputBinding:registerActionEvent(
         InputAction.CONTRACTLIST_TOGGLE,
         self,
         ContractListMod.onToggleAction,
@@ -43,14 +42,14 @@ function ContractListMod:registerInput()
         true    -- isActive
     )
 
-    if eventId ~= nil then
-        self.inputEventId = eventId
-        g_inputBinding:setActionEventTextPriority(eventId, GS_PRIO_NORMAL)
-        g_inputBinding:setActionEventText(eventId, g_i18n:getText("contractList_toggleAction"))
-        g_inputBinding:setActionEventTextVisibility(eventId, true)
-        Logging.info("[ContractList] Input action registered (eventId: %s)", tostring(eventId))
+    if toggleEventId ~= nil then
+        self.toggleEventId = toggleEventId
+        g_inputBinding:setActionEventTextPriority(toggleEventId, GS_PRIO_NORMAL)
+        g_inputBinding:setActionEventText(toggleEventId, g_i18n:getText("contractList_toggleAction"))
+        g_inputBinding:setActionEventTextVisibility(toggleEventId, true)
+        Logging.info("[ContractList] Input action registered")
     else
-        Logging.warning("[ContractList] Failed to register input action")
+        Logging.warning("[ContractList] Failed to register input action CONTRACTLIST_TOGGLE")
     end
 end
 
@@ -76,8 +75,6 @@ function ContractListMod:update(dt)
     if not self.isLoaded then
         return
     end
-
-    -- Future: throttled data refresh, animations, etc.
 end
 
 --- Called every frame for rendering.
@@ -125,6 +122,13 @@ function ContractListMod:deleteMap()
         g_inputBinding:removeActionEventsByTarget(self)
     end
 
+    -- Ensure cursor is restored
+    if self.hud ~= nil and self.hud:getIsVisible() then
+        if g_inputBinding ~= nil then
+            g_inputBinding:setShowMouseCursor(false)
+        end
+    end
+
     -- Clean up HUD
     if self.hud ~= nil then
         self.hud:delete()
@@ -132,7 +136,7 @@ function ContractListMod:deleteMap()
     end
 
     self.isLoaded = false
-    self.inputEventId = nil
+    self.toggleEventId = nil
 end
 
 -- Register as a mod event listener so the engine calls our lifecycle methods

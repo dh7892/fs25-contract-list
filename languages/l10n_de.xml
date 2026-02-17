@@ -27,6 +27,10 @@
         <text name="contractList_colReward" text="Belohnung"/>
         <text name="contractList_colProgress" text="Fortschritt"/>
 
+        <!-- Detail labels -->
+        <text name="contractList_equipmentCost" text="Ausruestung"/>
+        <text name="contractList_netReward" text="Netto"/>
+
         <!-- Messages -->
         <text name="contractList_noActiveContracts" text="Keine aktiven Auftraege"/>
         <text name="contractList_noAvailableContracts" text="Keine verfuegbaren Auftraege"/>

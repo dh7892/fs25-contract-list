@@ -66,12 +66,14 @@ FS25_ContractList/
 
 ## Implementation Phases
 
-### Phase 1: Scaffold & Toggle (CURRENT)
+### Phase 1: Scaffold & Toggle (DONE)
 - modDesc.xml, input action, basic HUD panel that toggles on/off
 
-### Phase 2: Display Active Contracts
+### Phase 2: Display Active Contracts (DONE)
 - Query g_missionManager, render list of active/finished contracts
-- Show type, field, reward, completion %
+- Show type, field, NPC, reward, vehicle cost, completion % with progress bar
+- Sorted: finished first, then by completion descending
+- Mouse-wheel scrolling, hover highlighting, alternating row backgrounds
 
 ### Phase 3: Click Interaction - Dismiss/Collect
 - mouseEvent() hit-testing on "Collect Payment" buttons
