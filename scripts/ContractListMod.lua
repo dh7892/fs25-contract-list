@@ -2,13 +2,14 @@
 -- ContractListMod
 -- Main entry point for the Contract List mod.
 -- Registers as a mod event listener for loadMap, update, draw, mouseEvent, keyEvent.
--- Manages the HUD panel lifecycle and input action binding.
+-- Manages the HUD panel lifecycle, input action binding, and settings persistence.
 ---
 
 ContractListMod = {}
 
 ContractListMod.MOD_NAME = "FS25_ContractList"
 ContractListMod.MOD_DIR = g_currentModDirectory or ""
+ContractListMod.SETTINGS_FILE = "modSettings/FS25_ContractList.xml"
 
 -- Singleton instance state
 ContractListMod.hud = nil
@@ -24,14 +25,73 @@ function ContractListMod:loadMap(filename)
     self.hud = ContractListHud.new()
     self.hud:init()
 
+    -- Set up position persistence callback
+    self.hud:setOnMoveCallback(function(x, y)
+        ContractListMod:saveSettings()
+    end)
+
+    -- Load saved position
+    self:loadSettings()
+
     self.isLoaded = true
     Logging.info("[ContractList] Mod loaded successfully")
+end
+
+--- Load settings (panel position) from XML file.
+function ContractListMod:loadSettings()
+    local filePath = getUserProfileAppPath() .. ContractListMod.SETTINGS_FILE
+
+    if not fileExists(filePath) then
+        Logging.info("[ContractList] No settings file found, using defaults")
+        return
+    end
+
+    local xmlFile = loadXMLFile("ContractListSettings", filePath)
+    if xmlFile == nil or xmlFile == 0 then
+        Logging.warning("[ContractList] Failed to load settings file")
+        return
+    end
+
+    local posX = getXMLFloat(xmlFile, "ContractList.hud#posX")
+    local posY = getXMLFloat(xmlFile, "ContractList.hud#posY")
+
+    if posX ~= nil and posY ~= nil then
+        self.hud:setPosition(posX, posY)
+        Logging.info("[ContractList] Loaded panel position: %.3f, %.3f", posX, posY)
+    end
+
+    delete(xmlFile)
+end
+
+--- Save settings (panel position) to XML file.
+function ContractListMod:saveSettings()
+    if self.hud == nil then
+        return
+    end
+
+    local filePath = getUserProfileAppPath() .. ContractListMod.SETTINGS_FILE
+    local dirPath = getUserProfileAppPath() .. "modSettings"
+
+    -- Ensure modSettings directory exists
+    createFolder(dirPath)
+
+    local xmlFile = createXMLFile("ContractListSettings", filePath, "ContractList")
+    if xmlFile == nil or xmlFile == 0 then
+        Logging.warning("[ContractList] Failed to create settings file")
+        return
+    end
+
+    local posX, posY = self.hud:getPosition()
+    setXMLFloat(xmlFile, "ContractList.hud#posX", posX)
+    setXMLFloat(xmlFile, "ContractList.hud#posY", posY)
+
+    saveXMLFile(xmlFile)
+    delete(xmlFile)
 end
 
 --- Register (or re-register) the toggle input action.
 -- Called every frame from update() because the engine clears action events
 -- on input context changes (entering vehicles, opening menus, etc.).
--- This is the standard pattern for addModEventListener-based mods.
 function ContractListMod:registerInput()
     -- Clean up previous registration
     if self.toggleEventId ~= nil then
@@ -62,10 +122,7 @@ function ContractListMod:registerInput()
 end
 
 --- Callback for the toggle keybinding.
--- @param actionName string Name of the triggered action
--- @param inputValue number Input value
 function ContractListMod:onToggleAction(actionName, inputValue)
-    Logging.info("[ContractList] onToggleAction fired")
     self:togglePanel()
 end
 
@@ -78,13 +135,10 @@ function ContractListMod:togglePanel()
         if g_inputBinding ~= nil then
             g_inputBinding:setShowMouseCursor(visible)
         end
-
-        Logging.info("[ContractList] Panel %s", visible and "opened" or "closed")
     end
 end
 
 --- Called every frame for logic updates.
--- @param dt number Delta time in milliseconds
 function ContractListMod:update(dt)
     if not self.isLoaded then
         return
@@ -106,11 +160,6 @@ function ContractListMod:draw()
 end
 
 --- Called for mouse input events.
--- @param posX number Normalized X position [0,1]
--- @param posY number Normalized Y position [0,1]
--- @param isDown boolean Mouse button pressed down
--- @param isUp boolean Mouse button released
--- @param button number Mouse button index
 function ContractListMod:mouseEvent(posX, posY, isDown, isUp, button)
     if not self.isLoaded then
         return
@@ -122,10 +171,6 @@ function ContractListMod:mouseEvent(posX, posY, isDown, isUp, button)
 end
 
 --- Called for keyboard input events.
--- @param unicode number Unicode character code
--- @param sym number Key symbol
--- @param modifier number Modifier key flags
--- @param isDown boolean Key pressed down
 function ContractListMod:keyEvent(unicode, sym, modifier, isDown)
     -- No direct key handling needed; using action events via update() registration
 end
@@ -133,6 +178,9 @@ end
 --- Called when the map is being unloaded. Clean up.
 function ContractListMod:deleteMap()
     Logging.info("[ContractList] Unloading mod")
+
+    -- Save settings before cleanup
+    self:saveSettings()
 
     -- Remove input bindings
     if g_inputBinding ~= nil then

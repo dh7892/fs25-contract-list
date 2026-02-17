@@ -3,22 +3,22 @@
 -- Renders the contract list panel as a HUD overlay on the main game screen.
 -- Uses Overlay objects for backgrounds and renderText() for labels.
 -- Tracks clickable button regions for mouse hit-testing.
--- Supports mouse-wheel scrolling when the list exceeds the visible area.
+-- Supports mouse-wheel scrolling and drag-to-move via the header bar.
 ---
 
 ContractListHud = {}
 local ContractListHud_mt = Class(ContractListHud)
 
--- Layout constants (normalized screen coordinates)
--- Panel is positioned on the right side of the screen
-ContractListHud.PANEL_X = 0.58
-ContractListHud.PANEL_Y = 0.10
-ContractListHud.PANEL_WIDTH = 0.40
-ContractListHud.PANEL_HEIGHT = 0.80
+-- Default panel position and size (normalized screen coordinates)
+ContractListHud.DEFAULT_X      = 0.58
+ContractListHud.DEFAULT_Y      = 0.10
+ContractListHud.PANEL_WIDTH    = 0.40
+ContractListHud.PANEL_HEIGHT   = 0.80
 
 -- Colors (r, g, b, a)
 ContractListHud.COLOR_BG            = {0.01, 0.01, 0.01, 0.82}
 ContractListHud.COLOR_HEADER_BG     = {0.08, 0.08, 0.08, 0.95}
+ContractListHud.COLOR_HEADER_DRAG   = {0.12, 0.12, 0.18, 0.95}  -- Header while dragging
 ContractListHud.COLOR_ROW_BG        = {0.06, 0.06, 0.06, 0.60}
 ContractListHud.COLOR_ROW_ALT_BG    = {0.09, 0.09, 0.09, 0.60}
 ContractListHud.COLOR_ROW_HOVER_BG  = {0.15, 0.15, 0.20, 0.70}
@@ -41,13 +41,16 @@ ContractListHud.TEXT_SIZE_TINY   = 0.010
 
 -- Spacing
 ContractListHud.HEADER_HEIGHT   = 0.038
-ContractListHud.ROW_HEIGHT      = 0.055   -- Two-line rows: type+field on line 1, details on line 2
-ContractListHud.ROW_LINE_GAP    = 0.004   -- Gap between the two lines within a row
+ContractListHud.ROW_HEIGHT      = 0.055
+ContractListHud.ROW_LINE_GAP    = 0.004
 ContractListHud.PADDING         = 0.008
 ContractListHud.PADDING_INNER   = 0.006
-ContractListHud.PROGRESS_HEIGHT = 0.006   -- Height of inline progress bar
+ContractListHud.PROGRESS_HEIGHT = 0.006
 ContractListHud.SCROLLBAR_WIDTH = 0.005
-ContractListHud.SCROLL_SPEED    = 3       -- Rows scrolled per mouse wheel tick
+ContractListHud.SCROLL_SPEED    = 3
+
+-- Drag settings
+ContractListHud.DRAG_DEAD_ZONE  = 0.003   -- Min movement to start drag (normalized)
 
 --- Create a new ContractListHud instance.
 -- @return ContractListHud
@@ -55,6 +58,13 @@ function ContractListHud.new()
     local self = setmetatable({}, ContractListHud_mt)
 
     self.isVisible = false
+    self.isInitialized = false
+
+    -- Panel position (mutable, can be dragged)
+    self.panelX = ContractListHud.DEFAULT_X
+    self.panelY = ContractListHud.DEFAULT_Y
+
+    -- Overlays
     self.bgOverlay = nil
     self.headerOverlay = nil
     self.rowOverlay = nil
@@ -63,21 +73,30 @@ function ContractListHud.new()
     self.separatorOverlay = nil
     self.scrollbarBgOverlay = nil
     self.scrollbarOverlay = nil
-    self.isInitialized = false
 
     -- Scroll state
-    self.scrollOffset = 0     -- First visible row index (0-based)
-    self.maxVisibleRows = 0   -- Computed during draw
-    self.totalRows = 0        -- Total contract count
+    self.scrollOffset = 0
+    self.maxVisibleRows = 0
+    self.totalRows = 0
 
     -- Mouse tracking
-    self.hoveredRow = -1      -- Index of the row the mouse is over (-1 = none)
+    self.hoveredRow = -1
     self.mouseX = 0
     self.mouseY = 0
 
+    -- Drag state
+    self.isDragging = false
+    self.dragStartMouseX = 0
+    self.dragStartMouseY = 0
+    self.dragOffsetX = 0     -- Mouse offset from panel origin at drag start
+    self.dragOffsetY = 0
+    self.dragStarted = false -- True once mouse moves past dead zone
+
     -- Click regions: list of {x, y, w, h, action, data} tables
-    -- Rebuilt each frame during draw()
     self.clickRegions = {}
+
+    -- Callback for when position changes (set by ContractListMod for persistence)
+    self.onMoveCallback = nil
 
     return self
 end
@@ -88,17 +107,16 @@ function ContractListHud:init()
         return
     end
 
-    -- Use the engine's built-in pixel texture for solid-color rectangles
     local pixelPath = "dataS/scripts/shared/graph_pixel.dds"
 
-    self.bgOverlay         = Overlay.new(pixelPath, 0, 0, 1, 1)
-    self.headerOverlay     = Overlay.new(pixelPath, 0, 0, 1, 1)
-    self.rowOverlay        = Overlay.new(pixelPath, 0, 0, 1, 1)
-    self.progressBgOverlay = Overlay.new(pixelPath, 0, 0, 1, 1)
-    self.progressBarOverlay= Overlay.new(pixelPath, 0, 0, 1, 1)
-    self.separatorOverlay  = Overlay.new(pixelPath, 0, 0, 1, 1)
-    self.scrollbarBgOverlay= Overlay.new(pixelPath, 0, 0, 1, 1)
-    self.scrollbarOverlay  = Overlay.new(pixelPath, 0, 0, 1, 1)
+    self.bgOverlay          = Overlay.new(pixelPath, 0, 0, 1, 1)
+    self.headerOverlay      = Overlay.new(pixelPath, 0, 0, 1, 1)
+    self.rowOverlay         = Overlay.new(pixelPath, 0, 0, 1, 1)
+    self.progressBgOverlay  = Overlay.new(pixelPath, 0, 0, 1, 1)
+    self.progressBarOverlay = Overlay.new(pixelPath, 0, 0, 1, 1)
+    self.separatorOverlay   = Overlay.new(pixelPath, 0, 0, 1, 1)
+    self.scrollbarBgOverlay = Overlay.new(pixelPath, 0, 0, 1, 1)
+    self.scrollbarOverlay   = Overlay.new(pixelPath, 0, 0, 1, 1)
 
     self.isInitialized = true
     Logging.info("[ContractList] HUD initialized")
@@ -120,6 +138,30 @@ function ContractListHud:delete()
     self.isInitialized = false
 end
 
+--- Set the panel position, clamped to screen bounds.
+-- @param x number Normalized X (left edge)
+-- @param y number Normalized Y (bottom edge)
+function ContractListHud:setPosition(x, y)
+    local pw = ContractListHud.PANEL_WIDTH
+    local ph = ContractListHud.PANEL_HEIGHT
+
+    -- Clamp so the panel stays fully on screen
+    self.panelX = math.max(0, math.min(x, 1.0 - pw))
+    self.panelY = math.max(0, math.min(y, 1.0 - ph))
+end
+
+--- Get the current panel position.
+-- @return number x, number y
+function ContractListHud:getPosition()
+    return self.panelX, self.panelY
+end
+
+--- Set a callback to be called when the panel is moved.
+-- @param callback function(x, y) Called with new position after drag ends
+function ContractListHud:setOnMoveCallback(callback)
+    self.onMoveCallback = callback
+end
+
 --- Show or hide the panel.
 -- @param visible boolean
 function ContractListHud:setVisible(visible)
@@ -127,6 +169,8 @@ function ContractListHud:setVisible(visible)
     if not visible then
         self.scrollOffset = 0
         self.hoveredRow = -1
+        self.isDragging = false
+        self.dragStarted = false
     end
 end
 
@@ -143,6 +187,29 @@ function ContractListHud:getIsVisible()
     return self.isVisible
 end
 
+--- Check if a point is inside the header bar.
+-- @param posX number Normalized X
+-- @param posY number Normalized Y
+-- @return boolean
+function ContractListHud:isInsideHeader(posX, posY)
+    local headerY = self.panelY + ContractListHud.PANEL_HEIGHT - ContractListHud.HEADER_HEIGHT
+    return posX >= self.panelX
+       and posX <= self.panelX + ContractListHud.PANEL_WIDTH
+       and posY >= headerY
+       and posY <= headerY + ContractListHud.HEADER_HEIGHT
+end
+
+--- Check if a point is inside the panel.
+-- @param posX number Normalized X
+-- @param posY number Normalized Y
+-- @return boolean
+function ContractListHud:isInsidePanel(posX, posY)
+    return posX >= self.panelX
+       and posX <= self.panelX + ContractListHud.PANEL_WIDTH
+       and posY >= self.panelY
+       and posY <= self.panelY + ContractListHud.PANEL_HEIGHT
+end
+
 --- Draw the HUD panel. Called every frame from ContractListMod:draw().
 function ContractListHud:draw()
     if not self.isVisible or not self.isInitialized then
@@ -152,8 +219,8 @@ function ContractListHud:draw()
     -- Clear click regions each frame
     self.clickRegions = {}
 
-    local px = ContractListHud.PANEL_X
-    local py = ContractListHud.PANEL_Y
+    local px = self.panelX
+    local py = self.panelY
     local pw = ContractListHud.PANEL_WIDTH
     local ph = ContractListHud.PANEL_HEIGHT
     local pad = ContractListHud.PADDING
@@ -166,9 +233,10 @@ function ContractListHud:draw()
     self.bgOverlay:setDimension(pw, ph)
     self.bgOverlay:render()
 
-    -- Draw header bar at the top
+    -- Draw header bar at the top (different color while dragging)
     local headerY = py + ph - headerH
-    self.headerOverlay:setColor(unpack(ContractListHud.COLOR_HEADER_BG))
+    local headerColor = self.isDragging and ContractListHud.COLOR_HEADER_DRAG or ContractListHud.COLOR_HEADER_BG
+    self.headerOverlay:setColor(unpack(headerColor))
     self.headerOverlay:setPosition(px, headerY)
     self.headerOverlay:setDimension(pw, headerH)
     self.headerOverlay:render()
@@ -190,6 +258,17 @@ function ContractListHud:draw()
     )
     setTextBold(false)
 
+    -- Draw drag hint in header (right side)
+    local hintText = self.isDragging and "..." or string.format("%d contract%s", self.totalRows, self.totalRows == 1 and "" or "s")
+    setTextColor(unpack(ContractListHud.COLOR_TEXT_DIM))
+    setTextAlignment(RenderText.ALIGN_RIGHT)
+    renderText(
+        px + pw - pad - ContractListHud.SCROLLBAR_WIDTH - pad,
+        headerY + (headerH - ContractListHud.TEXT_SIZE_SMALL) * 0.5,
+        ContractListHud.TEXT_SIZE_SMALL,
+        hintText
+    )
+
     -- Calculate content area
     local contentTop = headerY - pad
     local contentBottom = py + pad
@@ -199,17 +278,6 @@ function ContractListHud:draw()
     -- Clamp scroll offset
     local maxScroll = math.max(0, self.totalRows - self.maxVisibleRows)
     self.scrollOffset = math.max(0, math.min(self.scrollOffset, maxScroll))
-
-    -- Draw contract count in header (right side)
-    local countText = string.format("%d contract%s", self.totalRows, self.totalRows == 1 and "" or "s")
-    setTextColor(unpack(ContractListHud.COLOR_TEXT_DIM))
-    setTextAlignment(RenderText.ALIGN_RIGHT)
-    renderText(
-        px + pw - pad - ContractListHud.SCROLLBAR_WIDTH - pad,
-        headerY + (headerH - ContractListHud.TEXT_SIZE_SMALL) * 0.5,
-        ContractListHud.TEXT_SIZE_SMALL,
-        countText
-    )
 
     if self.totalRows == 0 then
         -- Empty state
@@ -263,13 +331,6 @@ end
 --- Draw a single contract row with two lines of info.
 -- Line 1: Type name + field (left), Reward (right)
 -- Line 2: NPC name (left), Status/Progress (right)
--- @param mission table The mission object
--- @param x number Left edge
--- @param y number Bottom edge
--- @param width number Row width
--- @param height number Row height
--- @param index number Row index in the full list (1-based)
--- @param isHovered boolean Whether the mouse is over this row
 function ContractListHud:drawContractRow(mission, x, y, width, height, index, isHovered)
     local data = ContractListUtil.getMissionDisplayData(mission)
     local pad = ContractListHud.PADDING_INNER
@@ -342,26 +403,22 @@ function ContractListHud:drawContractRow(mission, x, y, width, height, index, is
 
     -- Status / progress (right side of line 2)
     if data.isFinished then
-        -- "Finished" label
         setTextColor(unpack(ContractListHud.COLOR_GREEN))
         setTextAlignment(RenderText.ALIGN_RIGHT)
         setTextBold(true)
         renderText(x + width - pad, line2Y, ContractListHud.TEXT_SIZE_SMALL, g_i18n:getText("contractList_statusFinished"))
         setTextBold(false)
     elseif data.isRunning then
-        -- Progress bar + percentage
         local progressW = 0.08
         local progressH = ContractListHud.PROGRESS_HEIGHT
         local progressX = x + width - pad - progressW
         local progressY = line2Y + ContractListHud.TEXT_SIZE_SMALL * 0.2
 
-        -- Background
         self.progressBgOverlay:setColor(unpack(ContractListHud.COLOR_PROGRESS_BG))
         self.progressBgOverlay:setPosition(progressX, progressY)
         self.progressBgOverlay:setDimension(progressW, progressH)
         self.progressBgOverlay:render()
 
-        -- Filled portion
         local fillW = progressW * data.completion
         if fillW > 0 then
             self.progressBarOverlay:setColor(unpack(ContractListHud.COLOR_PROGRESS_BAR))
@@ -370,7 +427,6 @@ function ContractListHud:drawContractRow(mission, x, y, width, height, index, is
             self.progressBarOverlay:render()
         end
 
-        -- Percentage text to left of bar
         local pctStr = string.format("%d%%", math.floor(data.completion * 100))
         setTextColor(unpack(ContractListHud.COLOR_YELLOW))
         setTextAlignment(RenderText.ALIGN_RIGHT)
@@ -379,26 +435,18 @@ function ContractListHud:drawContractRow(mission, x, y, width, height, index, is
 end
 
 --- Draw a scrollbar on the right edge of the content area.
--- @param x number Left edge of scrollbar
--- @param y number Bottom of scrollbar track
--- @param w number Width of scrollbar
--- @param h number Height of scrollbar track
 function ContractListHud:drawScrollbar(x, y, w, h)
-    -- Track background
     self.scrollbarBgOverlay:setColor(unpack(ContractListHud.COLOR_SCROLLBAR_BG))
     self.scrollbarBgOverlay:setPosition(x, y)
     self.scrollbarBgOverlay:setDimension(w, h)
     self.scrollbarBgOverlay:render()
 
-    -- Thumb
     if self.totalRows > 0 then
         local thumbRatio = self.maxVisibleRows / self.totalRows
-        local thumbH = math.max(h * thumbRatio, 0.02) -- minimum thumb size
+        local thumbH = math.max(h * thumbRatio, 0.02)
         local scrollRange = h - thumbH
         local maxScroll = math.max(1, self.totalRows - self.maxVisibleRows)
         local thumbOffset = (self.scrollOffset / maxScroll) * scrollRange
-
-        -- Thumb is at top when scrollOffset=0, moves down as we scroll
         local thumbY = y + h - thumbH - thumbOffset
 
         self.scrollbarOverlay:setColor(unpack(ContractListHud.COLOR_SCROLLBAR))
@@ -408,33 +456,16 @@ function ContractListHud:drawScrollbar(x, y, w, h)
     end
 end
 
---- Check if a screen position is inside the panel.
--- @param posX number Normalized X position
--- @param posY number Normalized Y position
--- @return boolean
-function ContractListHud:isInsidePanel(posX, posY)
-    return posX >= ContractListHud.PANEL_X
-       and posX <= ContractListHud.PANEL_X + ContractListHud.PANEL_WIDTH
-       and posY >= ContractListHud.PANEL_Y
-       and posY <= ContractListHud.PANEL_Y + ContractListHud.PANEL_HEIGHT
-end
-
 --- Determine which row index the mouse is hovering over.
--- @param posX number Normalized X
--- @param posY number Normalized Y
 -- @return number Row index (1-based into full list) or -1
 function ContractListHud:getRowAtPosition(posX, posY)
-    local px = ContractListHud.PANEL_X
-    local py = ContractListHud.PANEL_Y
-    local ph = ContractListHud.PANEL_HEIGHT
     local pad = ContractListHud.PADDING
     local headerH = ContractListHud.HEADER_HEIGHT
     local rowH = ContractListHud.ROW_HEIGHT
 
-    local contentTop = py + ph - headerH - pad
+    local contentTop = self.panelY + ContractListHud.PANEL_HEIGHT - headerH - pad
 
-    -- Check if we're in the content area
-    if posY > contentTop or posY < py + pad then
+    if posY > contentTop or posY < self.panelY + pad then
         return -1
     end
 
@@ -449,7 +480,7 @@ function ContractListHud:getRowAtPosition(posX, posY)
     return -1
 end
 
---- Handle mouse events for hover tracking, scrolling, and click detection.
+--- Handle mouse events for dragging, hover tracking, scrolling, and click detection.
 -- @param posX number Normalized X position
 -- @param posY number Normalized Y position
 -- @param isDown boolean Mouse button pressed
@@ -464,16 +495,56 @@ function ContractListHud:onMouseEvent(posX, posY, isDown, isUp, button)
     self.mouseX = posX
     self.mouseY = posY
 
-    -- Check if mouse is inside the panel
+    -- === Handle active drag ===
+    if self.isDragging then
+        if button == Input.MOUSE_BUTTON_LEFT and isUp then
+            -- End drag
+            self.isDragging = false
+            self.dragStarted = false
+
+            -- Notify callback for persistence
+            if self.onMoveCallback ~= nil then
+                self.onMoveCallback(self.panelX, self.panelY)
+            end
+
+            return true
+        end
+
+        -- Check if we've moved past the dead zone
+        local dx = math.abs(posX - self.dragStartMouseX)
+        local dy = math.abs(posY - self.dragStartMouseY)
+        if not self.dragStarted then
+            if dx > ContractListHud.DRAG_DEAD_ZONE or dy > ContractListHud.DRAG_DEAD_ZONE then
+                self.dragStarted = true
+            end
+        end
+
+        -- Move the panel
+        if self.dragStarted then
+            local newX = posX - self.dragOffsetX
+            local newY = posY - self.dragOffsetY
+            self:setPosition(newX, newY)
+        end
+
+        return true
+    end
+
+    -- === Not currently dragging ===
+
+    -- Check if mouse is inside the panel at all
     if not self:isInsidePanel(posX, posY) then
         self.hoveredRow = -1
         return false
     end
 
-    -- Track hovered row
-    self.hoveredRow = self:getRowAtPosition(posX, posY)
+    -- Track hovered row (only when not in header)
+    if self:isInsideHeader(posX, posY) then
+        self.hoveredRow = -1
+    else
+        self.hoveredRow = self:getRowAtPosition(posX, posY)
+    end
 
-    -- Mouse wheel scrolling (button 4 = scroll up, button 5 = scroll down in FS25)
+    -- Mouse wheel scrolling
     if isDown then
         if button == Input.MOUSE_BUTTON_WHEEL_UP then
             self.scrollOffset = math.max(0, self.scrollOffset - ContractListHud.SCROLL_SPEED)
@@ -485,20 +556,34 @@ function ContractListHud:onMouseEvent(posX, posY, isDown, isUp, button)
         end
     end
 
-    -- Consume left clicks inside the panel to prevent game actions
-    -- Phase 3 will add actual button hit-testing here
-    if isDown and button == Input.MOUSE_BUTTON_LEFT then
-        -- Check click regions (future: buttons)
-        for _, region in ipairs(self.clickRegions) do
-            if posX >= region.x and posX <= region.x + region.w
-               and posY >= region.y and posY <= region.y + region.h then
-                if region.action ~= nil then
-                    region.action(region.data)
-                end
+    -- Left mouse button
+    if button == Input.MOUSE_BUTTON_LEFT then
+        if isDown then
+            -- Start drag if clicking the header
+            if self:isInsideHeader(posX, posY) then
+                self.isDragging = true
+                self.dragStarted = false
+                self.dragStartMouseX = posX
+                self.dragStartMouseY = posY
+                self.dragOffsetX = posX - self.panelX
+                self.dragOffsetY = posY - self.panelY
                 return true
             end
+
+            -- Check click regions (buttons)
+            for _, region in ipairs(self.clickRegions) do
+                if posX >= region.x and posX <= region.x + region.w
+                   and posY >= region.y and posY <= region.y + region.h then
+                    if region.action ~= nil then
+                        region.action(region.data)
+                    end
+                    return true
+                end
+            end
+
+            -- Consume click in content area
+            return true
         end
-        return true
     end
 
     -- Consume all mouse events inside the panel
