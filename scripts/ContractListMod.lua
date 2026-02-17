@@ -24,18 +24,22 @@ function ContractListMod:loadMap(filename)
     self.hud = ContractListHud.new()
     self.hud:init()
 
-    -- Register input action for toggling the panel
-    self:registerInput()
-
     self.isLoaded = true
     Logging.info("[ContractList] Mod loaded successfully")
 end
 
---- Register the toggle keybinding action.
+--- Register (or re-register) the toggle input action.
+-- Called every frame from update() because the engine clears action events
+-- on input context changes (entering vehicles, opening menus, etc.).
+-- This is the standard pattern for addModEventListener-based mods.
 function ContractListMod:registerInput()
-    -- Check if the InputAction exists (it should if modDesc.xml loaded correctly)
+    -- Clean up previous registration
+    if self.toggleEventId ~= nil then
+        g_inputBinding:removeActionEvent(self.toggleEventId)
+        self.toggleEventId = nil
+    end
+
     if InputAction.CONTRACTLIST_TOGGLE == nil then
-        Logging.warning("[ContractList] InputAction.CONTRACTLIST_TOGGLE not found - keybinding may not work")
         return
     end
 
@@ -54,9 +58,6 @@ function ContractListMod:registerInput()
         g_inputBinding:setActionEventTextPriority(toggleEventId, GS_PRIO_NORMAL)
         g_inputBinding:setActionEventText(toggleEventId, g_i18n:getText("contractList_toggleAction"))
         g_inputBinding:setActionEventTextVisibility(toggleEventId, true)
-        Logging.info("[ContractList] Input action registered (eventId: %s)", tostring(toggleEventId))
-    else
-        Logging.warning("[ContractList] Failed to register input action - registerActionEvent returned nil")
     end
 end
 
@@ -88,6 +89,9 @@ function ContractListMod:update(dt)
     if not self.isLoaded then
         return
     end
+
+    -- Re-register input each frame to survive context changes
+    self:registerInput()
 end
 
 --- Called every frame for rendering.
@@ -118,23 +122,12 @@ function ContractListMod:mouseEvent(posX, posY, isDown, isUp, button)
 end
 
 --- Called for keyboard input events.
--- Provides a fallback toggle if the action event system isn't working.
 -- @param unicode number Unicode character code
 -- @param sym number Key symbol
 -- @param modifier number Modifier key flags
 -- @param isDown boolean Key pressed down
 function ContractListMod:keyEvent(unicode, sym, modifier, isDown)
-    if not self.isLoaded or not isDown then
-        return
-    end
-
-    -- Fallback: if the registered action event isn't working,
-    -- detect Right Ctrl + C directly as an emergency toggle.
-    -- Input.KEY_rctrl = 285, Input.KEY_c = 46
-    if sym == Input.KEY_c and modifier == Input.MOD_RCTRL then
-        Logging.info("[ContractList] Fallback keyEvent toggle triggered (RCtrl+C)")
-        self:togglePanel()
-    end
+    -- No direct key handling needed; using action events via update() registration
 end
 
 --- Called when the map is being unloaded. Clean up.
