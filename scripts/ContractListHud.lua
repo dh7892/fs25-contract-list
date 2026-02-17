@@ -10,9 +10,9 @@ ContractListHud = {}
 local ContractListHud_mt = Class(ContractListHud)
 
 -- Default panel position and size (normalized screen coordinates)
-ContractListHud.DEFAULT_X      = 0.58
+ContractListHud.DEFAULT_X      = 0.78
 ContractListHud.DEFAULT_Y      = 0.10
-ContractListHud.PANEL_WIDTH    = 0.40
+ContractListHud.PANEL_WIDTH    = 0.21
 ContractListHud.PANEL_HEIGHT   = 0.80
 
 -- Colors (r, g, b, a)
@@ -138,16 +138,24 @@ function ContractListHud:delete()
     self.isInitialized = false
 end
 
---- Set the panel position, clamped to screen bounds.
+--- Set the panel position, clamped so the header bar always stays on screen.
+-- The body can extend off the bottom of the screen, but the header
+-- (the drag handle) must remain fully visible and reachable.
 -- @param x number Normalized X (left edge)
 -- @param y number Normalized Y (bottom edge)
 function ContractListHud:setPosition(x, y)
     local pw = ContractListHud.PANEL_WIDTH
     local ph = ContractListHud.PANEL_HEIGHT
+    local headerH = ContractListHud.HEADER_HEIGHT
 
-    -- Clamp so the panel stays fully on screen
+    -- Horizontal: keep full panel width on screen
     self.panelX = math.max(0, math.min(x, 1.0 - pw))
-    self.panelY = math.max(0, math.min(y, 1.0 - ph))
+
+    -- Vertical: the header is at the top of the panel (y + ph - headerH).
+    -- Ensure header top (y + ph) <= 1.0  =>  y <= 1.0 - ph
+    -- Ensure header bottom (y + ph - headerH) >= 0  =>  y >= headerH - ph
+    -- This lets the body hang off the bottom while the header stays visible.
+    self.panelY = math.max(headerH - ph, math.min(y, 1.0 - ph))
 end
 
 --- Get the current panel position.
@@ -409,7 +417,7 @@ function ContractListHud:drawContractRow(mission, x, y, width, height, index, is
         renderText(x + width - pad, line2Y, ContractListHud.TEXT_SIZE_SMALL, g_i18n:getText("contractList_statusFinished"))
         setTextBold(false)
     elseif data.isRunning then
-        local progressW = 0.08
+        local progressW = width * 0.35
         local progressH = ContractListHud.PROGRESS_HEIGHT
         local progressX = x + width - pad - progressW
         local progressY = line2Y + ContractListHud.TEXT_SIZE_SMALL * 0.2
