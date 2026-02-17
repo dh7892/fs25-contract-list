@@ -75,9 +75,12 @@ FS25_ContractList/
 - Sorted: finished first, then by completion descending
 - Mouse-wheel scrolling, hover highlighting, alternating row backgrounds
 
-### Phase 3: Click Interaction - Dismiss/Collect
-- mouseEvent() hit-testing on "Collect Payment" buttons
-- Call dismissMission() on click
+### Phase 3: Click Interaction - Dismiss/Collect (DONE)
+- "Collect" button on finished contracts calls dismissMission() to collect payment
+- "Cancel" button on running contracts calls cancelMission()
+- Buttons have hover highlight states (green for collect, red for cancel)
+- Click regions registered each frame and tested in mouseEvent()
+- Draggable panel via header bar with position persistence
 
 ### Phase 4: Multiplayer Support
 - Network events for server-authoritative contract mutations

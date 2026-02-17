@@ -30,6 +30,11 @@ function ContractListMod:loadMap(filename)
         ContractListMod:saveSettings()
     end)
 
+    -- Set up contract action callback
+    self.hud:setOnActionCallback(function(actionType, mission)
+        ContractListMod:onContractAction(actionType, mission)
+    end)
+
     -- Load saved position
     self:loadSettings()
 
@@ -124,6 +129,50 @@ end
 --- Callback for the toggle keybinding.
 function ContractListMod:onToggleAction(actionName, inputValue)
     self:togglePanel()
+end
+
+--- Handle contract actions from HUD button clicks.
+-- @param actionType string "collect" or "cancel"
+-- @param mission table The mission object
+function ContractListMod:onContractAction(actionType, mission)
+    if mission == nil or g_missionManager == nil then
+        return
+    end
+
+    if actionType == "collect" then
+        -- Dismiss a finished contract (collects payment)
+        if mission.status == MissionStatus.FINISHED then
+            Logging.info("[ContractList] Collecting payment for mission: %s",
+                tostring(ContractListUtil.getMissionTypeName(mission)))
+
+            local success, err = pcall(function()
+                g_missionManager:dismissMission(mission)
+            end)
+
+            if success then
+                Logging.info("[ContractList] Payment collected successfully")
+            else
+                Logging.warning("[ContractList] Failed to collect payment: %s", tostring(err))
+            end
+        end
+
+    elseif actionType == "cancel" then
+        -- Cancel a running contract
+        if mission.status == MissionStatus.RUNNING then
+            Logging.info("[ContractList] Cancelling mission: %s",
+                tostring(ContractListUtil.getMissionTypeName(mission)))
+
+            local success, err = pcall(function()
+                g_missionManager:cancelMission(mission)
+            end)
+
+            if success then
+                Logging.info("[ContractList] Mission cancelled")
+            else
+                Logging.warning("[ContractList] Failed to cancel mission: %s", tostring(err))
+            end
+        end
+    end
 end
 
 --- Toggle the panel visibility and manage mouse cursor.

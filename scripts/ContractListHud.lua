@@ -32,6 +32,11 @@ ContractListHud.COLOR_PROGRESS_BG   = {0.15, 0.15, 0.15, 0.80}
 ContractListHud.COLOR_PROGRESS_BAR  = {0.35, 0.70, 0.35, 0.90}
 ContractListHud.COLOR_SCROLLBAR_BG  = {0.10, 0.10, 0.10, 0.60}
 ContractListHud.COLOR_SCROLLBAR     = {0.40, 0.40, 0.40, 0.80}
+ContractListHud.COLOR_BTN_COLLECT   = {0.20, 0.55, 0.20, 0.90}  -- Green button
+ContractListHud.COLOR_BTN_COLLECT_H = {0.25, 0.70, 0.25, 1.00}  -- Green hover
+ContractListHud.COLOR_BTN_CANCEL    = {0.55, 0.20, 0.20, 0.90}  -- Red button
+ContractListHud.COLOR_BTN_CANCEL_H  = {0.70, 0.25, 0.25, 1.00}  -- Red hover
+ContractListHud.COLOR_BTN_TEXT      = {1.0, 1.0, 1.0, 1.0}
 
 -- Text sizes (normalized)
 ContractListHud.TEXT_SIZE_TITLE  = 0.020
@@ -41,13 +46,15 @@ ContractListHud.TEXT_SIZE_TINY   = 0.010
 
 -- Spacing
 ContractListHud.HEADER_HEIGHT   = 0.038
-ContractListHud.ROW_HEIGHT      = 0.055
+ContractListHud.ROW_HEIGHT      = 0.062
 ContractListHud.ROW_LINE_GAP    = 0.004
 ContractListHud.PADDING         = 0.008
 ContractListHud.PADDING_INNER   = 0.006
 ContractListHud.PROGRESS_HEIGHT = 0.006
 ContractListHud.SCROLLBAR_WIDTH = 0.005
 ContractListHud.SCROLL_SPEED    = 3
+ContractListHud.BUTTON_HEIGHT   = 0.018
+ContractListHud.BUTTON_PADDING  = 0.003
 
 -- Drag settings
 ContractListHud.DRAG_DEAD_ZONE  = 0.003   -- Min movement to start drag (normalized)
@@ -98,6 +105,10 @@ function ContractListHud.new()
     -- Callback for when position changes (set by ContractListMod for persistence)
     self.onMoveCallback = nil
 
+    -- Callback for contract actions: function(actionType, mission)
+    -- actionType: "collect" or "cancel"
+    self.onActionCallback = nil
+
     return self
 end
 
@@ -117,6 +128,7 @@ function ContractListHud:init()
     self.separatorOverlay   = Overlay.new(pixelPath, 0, 0, 1, 1)
     self.scrollbarBgOverlay = Overlay.new(pixelPath, 0, 0, 1, 1)
     self.scrollbarOverlay   = Overlay.new(pixelPath, 0, 0, 1, 1)
+    self.buttonOverlay      = Overlay.new(pixelPath, 0, 0, 1, 1)
 
     self.isInitialized = true
     Logging.info("[ContractList] HUD initialized")
@@ -127,7 +139,7 @@ function ContractListHud:delete()
     local overlays = {
         "bgOverlay", "headerOverlay", "rowOverlay",
         "progressBgOverlay", "progressBarOverlay", "separatorOverlay",
-        "scrollbarBgOverlay", "scrollbarOverlay",
+        "scrollbarBgOverlay", "scrollbarOverlay", "buttonOverlay",
     }
     for _, name in ipairs(overlays) do
         if self[name] ~= nil then
@@ -168,6 +180,12 @@ end
 -- @param callback function(x, y) Called with new position after drag ends
 function ContractListHud:setOnMoveCallback(callback)
     self.onMoveCallback = callback
+end
+
+--- Set a callback for contract actions (collect payment, cancel).
+-- @param callback function(actionType, mission) Called when a button is clicked
+function ContractListHud:setOnActionCallback(callback)
+    self.onActionCallback = callback
 end
 
 --- Show or hide the panel.
@@ -409,18 +427,51 @@ function ContractListHud:drawContractRow(mission, x, y, width, height, index, is
         renderText(x + pad + npcW, line2Y, ContractListHud.TEXT_SIZE_SMALL, costStr)
     end
 
-    -- Status / progress (right side of line 2)
+    -- Status / progress / buttons (right side of line 2)
+    local btnH = ContractListHud.BUTTON_HEIGHT
+    local btnPad = ContractListHud.BUTTON_PADDING
+    local btnY = line2Y - btnPad
+
     if data.isFinished then
-        setTextColor(unpack(ContractListHud.COLOR_GREEN))
-        setTextAlignment(RenderText.ALIGN_RIGHT)
-        setTextBold(true)
-        renderText(x + width - pad, line2Y, ContractListHud.TEXT_SIZE_SMALL, g_i18n:getText("contractList_statusFinished"))
-        setTextBold(false)
+        -- "Collect" button for finished contracts
+        local btnText = g_i18n:getText("contractList_collectPayment")
+        local btnTextW = getTextWidth(ContractListHud.TEXT_SIZE_SMALL, btnText)
+        local btnW = btnTextW + btnPad * 4
+        local btnX = x + width - pad - btnW
+
+        -- Check if mouse is over this button
+        local btnHovered = (self.mouseX >= btnX and self.mouseX <= btnX + btnW
+                        and self.mouseY >= btnY and self.mouseY <= btnY + btnH)
+
+        local btnColor = btnHovered and ContractListHud.COLOR_BTN_COLLECT_H or ContractListHud.COLOR_BTN_COLLECT
+        self.buttonOverlay:setColor(unpack(btnColor))
+        self.buttonOverlay:setPosition(btnX, btnY)
+        self.buttonOverlay:setDimension(btnW, btnH)
+        self.buttonOverlay:render()
+
+        setTextColor(unpack(ContractListHud.COLOR_BTN_TEXT))
+        setTextAlignment(RenderText.ALIGN_CENTER)
+        renderText(btnX + btnW * 0.5, btnY + (btnH - ContractListHud.TEXT_SIZE_SMALL) * 0.5, ContractListHud.TEXT_SIZE_SMALL, btnText)
+
+        -- Register click region
+        table.insert(self.clickRegions, {
+            x = btnX, y = btnY, w = btnW, h = btnH,
+            action = function()
+                if self.onActionCallback then
+                    self.onActionCallback("collect", mission)
+                end
+            end,
+        })
+
     elseif data.isRunning then
-        local progressW = width * 0.35
+        -- Progress bar
+        local btnText = g_i18n:getText("contractList_cancel")
+        local btnTextW = getTextWidth(ContractListHud.TEXT_SIZE_SMALL, btnText)
+        local btnW = btnTextW + btnPad * 4
+        local progressW = width - pad * 2 - btnW - pad
         local progressH = ContractListHud.PROGRESS_HEIGHT
-        local progressX = x + width - pad - progressW
-        local progressY = line2Y + ContractListHud.TEXT_SIZE_SMALL * 0.2
+        local progressX = x + pad
+        local progressY = btnY + btnH * 0.5 - progressH * 0.5
 
         self.progressBgOverlay:setColor(unpack(ContractListHud.COLOR_PROGRESS_BG))
         self.progressBgOverlay:setPosition(progressX, progressY)
@@ -435,10 +486,36 @@ function ContractListHud:drawContractRow(mission, x, y, width, height, index, is
             self.progressBarOverlay:render()
         end
 
+        -- Percentage text above progress bar
         local pctStr = string.format("%d%%", math.floor(data.completion * 100))
         setTextColor(unpack(ContractListHud.COLOR_YELLOW))
-        setTextAlignment(RenderText.ALIGN_RIGHT)
-        renderText(progressX - pad, line2Y, ContractListHud.TEXT_SIZE_SMALL, pctStr)
+        setTextAlignment(RenderText.ALIGN_LEFT)
+        renderText(progressX, line2Y, ContractListHud.TEXT_SIZE_SMALL, pctStr)
+
+        -- "Cancel" button to the right of progress bar
+        local cancelBtnX = x + width - pad - btnW
+        local cancelBtnHovered = (self.mouseX >= cancelBtnX and self.mouseX <= cancelBtnX + btnW
+                              and self.mouseY >= btnY and self.mouseY <= btnY + btnH)
+
+        local cancelColor = cancelBtnHovered and ContractListHud.COLOR_BTN_CANCEL_H or ContractListHud.COLOR_BTN_CANCEL
+        self.buttonOverlay:setColor(unpack(cancelColor))
+        self.buttonOverlay:setPosition(cancelBtnX, btnY)
+        self.buttonOverlay:setDimension(btnW, btnH)
+        self.buttonOverlay:render()
+
+        setTextColor(unpack(ContractListHud.COLOR_BTN_TEXT))
+        setTextAlignment(RenderText.ALIGN_CENTER)
+        renderText(cancelBtnX + btnW * 0.5, btnY + (btnH - ContractListHud.TEXT_SIZE_SMALL) * 0.5, ContractListHud.TEXT_SIZE_SMALL, btnText)
+
+        -- Register click region for cancel
+        table.insert(self.clickRegions, {
+            x = cancelBtnX, y = btnY, w = btnW, h = btnH,
+            action = function()
+                if self.onActionCallback then
+                    self.onActionCallback("cancel", mission)
+                end
+            end,
+        })
     end
 end
 
