@@ -169,16 +169,178 @@ function ContractListUtil.getMissionTypeName(mission)
     return "Unknown"
 end
 
---- Get the field number string for a mission, if applicable.
+--- Get a short context string for a mission based on its type.
+-- For field missions: "Field 5" or "Field 5 - Wheat"
+-- For transport missions: tries to extract pickup/delivery from getDetails()
+-- For other missions: uses getLocation() or title
 -- @param mission table The mission object
--- @return string Field identifier or empty string
+-- @return string Context description or empty string
 function ContractListUtil.getFieldDescription(mission)
+    local typeName = mission.type and mission.type.name or ""
+
+    -- Field-based missions: show field number + crop if available
     if mission.field ~= nil then
-        local fieldId = mission.field.fieldId
-        if fieldId ~= nil then
-            return string.format("Field %d", fieldId)
+        local parts = {}
+
+        -- Field ID
+        if mission.field.fieldId ~= nil then
+            table.insert(parts, string.format("Field %d", mission.field.fieldId))
+        end
+
+        -- Crop name for harvest/sow missions
+        local cropName = ContractListUtil.getCropName(mission)
+        if cropName ~= "" then
+            table.insert(parts, cropName)
+        end
+
+        if #parts > 0 then
+            return table.concat(parts, " - ")
         end
     end
+
+    -- Non-field missions: try to build a useful description
+    -- from getDetails() or getLocation()
+    local extraInfo = ContractListUtil.getExtraInfo(mission)
+    if extraInfo ~= "" then
+        return extraInfo
+    end
+
+    -- Fallback: try getLocation()
+    local success, location = pcall(function() return mission:getLocation() end)
+    if success and location ~= nil and location ~= "" then
+        return location
+    end
+
+    return ""
+end
+
+--- Get the crop/fruit name for a mission.
+-- @param mission table The mission object
+-- @return string Crop name or empty string
+function ContractListUtil.getCropName(mission)
+    -- Try fruitTypeIndex (sow/harvest missions)
+    if mission.fruitTypeIndex ~= nil and g_fruitTypeManager ~= nil then
+        local success, result = pcall(function()
+            local fillType = g_fruitTypeManager.fruitTypeIndexToFillType[mission.fruitTypeIndex]
+            if fillType ~= nil and fillType.title ~= nil then
+                return fillType.title
+            end
+            return nil
+        end)
+        if success and result ~= nil then
+            return result
+        end
+    end
+
+    -- Try fillTypeIndex (harvest missions)
+    if mission.fillTypeIndex ~= nil and g_fillTypeManager ~= nil then
+        local success, result = pcall(function()
+            local fillType = g_fillTypeManager.fillTypes[mission.fillTypeIndex]
+            if fillType ~= nil and fillType.title ~= nil then
+                return fillType.title
+            end
+            return nil
+        end)
+        if success and result ~= nil then
+            return result
+        end
+    end
+
+    return ""
+end
+
+--- Extract extra info from a mission's details or properties.
+-- Particularly useful for transport missions where we want pickup/delivery locations.
+-- @param mission table The mission object
+-- @return string Extra info string or empty string
+function ContractListUtil.getExtraInfo(mission)
+    local typeName = mission.type and mission.type.name or ""
+
+    -- For tree transport: try to find selling station name and any location info
+    if typeName == "treeTransportMission" or typeName == "supplyTransportMission" then
+        local parts = {}
+
+        -- Try sellingStation (delivery point)
+        if mission.sellingStation ~= nil then
+            local success, name = pcall(function() return mission.sellingStation:getName() end)
+            if success and name ~= nil and name ~= "" then
+                table.insert(parts, "To: " .. name)
+            end
+        end
+
+        -- Try loadingStation / pickupStation (pickup point)
+        if mission.loadingStation ~= nil then
+            local success, name = pcall(function() return mission.loadingStation:getName() end)
+            if success and name ~= nil and name ~= "" then
+                table.insert(parts, "From: " .. name)
+            end
+        end
+
+        if #parts > 0 then
+            return table.concat(parts, " | ")
+        end
+
+        -- Fallback: parse getDetails() for location info
+        return ContractListUtil.extractLocationFromDetails(mission)
+    end
+
+    return ""
+end
+
+--- Parse getDetails() to extract location-related values.
+-- @param mission table The mission object
+-- @return string Location info or empty string
+function ContractListUtil.extractLocationFromDetails(mission)
+    local success, details = pcall(function() return mission:getDetails() end)
+    if not success or details == nil then
+        return ""
+    end
+
+    -- Log details once per mission type for debugging
+    local typeName = mission.type and mission.type.name or "unknown"
+    if not ContractListUtil._loggedDetailTypes then
+        ContractListUtil._loggedDetailTypes = {}
+    end
+    if not ContractListUtil._loggedDetailTypes[typeName] then
+        ContractListUtil._loggedDetailTypes[typeName] = true
+        Logging.info("[ContractList] Details for %s:", typeName)
+        for i, detail in ipairs(details) do
+            Logging.info("[ContractList]   [%d] title=%s, value=%s",
+                i, tostring(detail.title), tostring(detail.value))
+        end
+
+        -- Also dump direct properties for transport missions
+        if typeName == "treeTransportMission" then
+            Logging.info("[ContractList] TreeTransport properties:")
+            for k, v in pairs(mission) do
+                if type(v) ~= "function" and type(v) ~= "table" then
+                    Logging.info("[ContractList]   %s = %s", tostring(k), tostring(v))
+                elseif type(v) == "table" then
+                    Logging.info("[ContractList]   %s = [table]", tostring(k))
+                end
+            end
+        end
+    end
+
+    -- Look for location-related detail entries
+    local parts = {}
+    for _, detail in ipairs(details) do
+        local titleLower = detail.title and string.lower(detail.title) or ""
+        -- Match common location-related titles
+        if string.find(titleLower, "location") or string.find(titleLower, "pickup")
+           or string.find(titleLower, "deliver") or string.find(titleLower, "drop")
+           or string.find(titleLower, "station") or string.find(titleLower, "destination")
+           or string.find(titleLower, "from") or string.find(titleLower, "to") then
+            if detail.value ~= nil and detail.value ~= "" then
+                table.insert(parts, detail.value)
+            end
+        end
+    end
+
+    if #parts > 0 then
+        return table.concat(parts, " | ")
+    end
+
     return ""
 end
 
