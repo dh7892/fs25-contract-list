@@ -299,55 +299,24 @@ function ContractListMod:onContractAction(actionType, mission)
             end
 
             local farmId = ContractListUtil.getFarmId()
-            Logging.info("[ContractList] Accepting mission: %s (farmId=%s, status before=%s)",
+            Logging.info("[ContractList] Accepting mission: %s (our farmId=%s, mission.farmId before=%s, status before=%s)",
                 tostring(ContractListUtil.getMissionTypeName(mission)),
                 tostring(farmId),
+                tostring(mission.farmId),
                 tostring(mission.status))
 
-            -- Try multiple approaches to accept the mission
-            local accepted = false
+            -- Assign our farm to the mission before starting
+            mission.farmId = farmId
 
-            -- Method 1: tryToAccept (some mission types)
-            if not accepted then
-                local success, err = pcall(function()
-                    return mission:tryToAccept()
-                end)
-                if success then
-                    Logging.info("[ContractList] tryToAccept succeeded, status after=%s, farmId after=%s",
-                        tostring(mission.status), tostring(mission.farmId))
-                    accepted = true
-                else
-                    Logging.info("[ContractList] tryToAccept not available: %s", tostring(err))
-                end
-            end
+            local success, err = pcall(function()
+                g_missionManager:startMission(mission)
+            end)
 
-            -- Method 2: startMission on the manager
-            if not accepted then
-                local success, err = pcall(function()
-                    g_missionManager:startMission(mission)
-                end)
-                if success then
-                    Logging.info("[ContractList] startMission succeeded, status after=%s, farmId after=%s",
-                        tostring(mission.status), tostring(mission.farmId))
-                    accepted = true
-                else
-                    Logging.info("[ContractList] startMission failed: %s", tostring(err))
-                end
-            end
-
-            -- Method 3: Assign farm and start manually
-            if not accepted then
-                local success, err = pcall(function()
-                    mission.farmId = farmId
-                    mission:start()
-                end)
-                if success then
-                    Logging.info("[ContractList] Manual start succeeded, status after=%s, farmId after=%s",
-                        tostring(mission.status), tostring(mission.farmId))
-                    accepted = true
-                else
-                    Logging.warning("[ContractList] All accept methods failed, last error: %s", tostring(err))
-                end
+            if success then
+                Logging.info("[ContractList] Mission accepted: status=%s, farmId=%s",
+                    tostring(mission.status), tostring(mission.farmId))
+            else
+                Logging.warning("[ContractList] startMission failed: %s", tostring(err))
             end
         end
     end
