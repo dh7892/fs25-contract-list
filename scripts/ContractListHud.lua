@@ -1,13 +1,17 @@
 ---
 -- ContractListHud
 -- Renders the contract list panel as a HUD overlay on the main game screen.
--- Uses Overlay objects for backgrounds and renderText() for labels.
+-- Uses drawFilledRect() for backgrounds (AutoDrive pattern) and renderText() for labels.
 -- Tracks clickable button regions for mouse hit-testing.
 -- Supports mouse-wheel scrolling and drag-to-move via the header bar.
 ---
 
 ContractListHud = {}
 local ContractListHud_mt = Class(ContractListHud)
+
+-- Mouse wheel flag: set per-frame when scroll is consumed by our HUD.
+-- Checked by VehicleCamera.zoomSmoothly override to block camera zoom.
+ContractListHud.mouseWheelUsed = false
 
 -- Default panel position and size (normalized screen coordinates)
 ContractListHud.DEFAULT_X      = 0.78
@@ -85,16 +89,6 @@ function ContractListHud.new()
     self.panelX = ContractListHud.DEFAULT_X
     self.panelY = ContractListHud.DEFAULT_Y
 
-    -- Overlays
-    self.bgOverlay = nil
-    self.headerOverlay = nil
-    self.rowOverlay = nil
-    self.progressBgOverlay = nil
-    self.progressBarOverlay = nil
-    self.separatorOverlay = nil
-    self.scrollbarBgOverlay = nil
-    self.scrollbarOverlay = nil
-
     -- Scroll state
     self.scrollOffset = 0
     self.maxVisibleRows = 0
@@ -130,42 +124,19 @@ function ContractListHud.new()
     return self
 end
 
---- Initialize overlay objects. Called once after the game has loaded.
+--- Initialize the HUD. Called once after the game has loaded.
+-- No overlay objects needed -- we use drawFilledRect() for all backgrounds.
 function ContractListHud:init()
     if self.isInitialized then
         return
     end
 
-    local pixelPath = "dataS/scripts/shared/graph_pixel.dds"
-
-    self.bgOverlay          = Overlay.new(pixelPath, 0, 0, 1, 1)
-    self.headerOverlay      = Overlay.new(pixelPath, 0, 0, 1, 1)
-    self.rowOverlay         = Overlay.new(pixelPath, 0, 0, 1, 1)
-    self.progressBgOverlay  = Overlay.new(pixelPath, 0, 0, 1, 1)
-    self.progressBarOverlay = Overlay.new(pixelPath, 0, 0, 1, 1)
-    self.separatorOverlay   = Overlay.new(pixelPath, 0, 0, 1, 1)
-    self.scrollbarBgOverlay = Overlay.new(pixelPath, 0, 0, 1, 1)
-    self.scrollbarOverlay   = Overlay.new(pixelPath, 0, 0, 1, 1)
-    self.buttonOverlay      = Overlay.new(pixelPath, 0, 0, 1, 1)
-    self.tabOverlay         = Overlay.new(pixelPath, 0, 0, 1, 1)
-
     self.isInitialized = true
     Logging.info("[ContractList] HUD initialized")
 end
 
---- Clean up overlay objects.
+--- Clean up.
 function ContractListHud:delete()
-    local overlays = {
-        "bgOverlay", "headerOverlay", "rowOverlay",
-        "progressBgOverlay", "progressBarOverlay", "separatorOverlay",
-        "scrollbarBgOverlay", "scrollbarOverlay", "buttonOverlay", "tabOverlay",
-    }
-    for _, name in ipairs(overlays) do
-        if self[name] ~= nil then
-            self[name]:delete()
-            self[name] = nil
-        end
-    end
     self.isInitialized = false
 end
 
@@ -262,8 +233,14 @@ function ContractListHud:draw()
         return
     end
 
+    -- Reset mouse wheel flag each frame (set in mouseEvent if consumed)
+    ContractListHud.mouseWheelUsed = false
+
     -- Clear click regions each frame
     self.clickRegions = {}
+
+    -- Ensure we render on top of 3D content
+    new2DLayer()
 
     local px = self.panelX
     local py = self.panelY
@@ -275,18 +252,13 @@ function ContractListHud:draw()
     local rowH = ContractListHud.ROW_HEIGHT
 
     -- Draw panel background
-    self.bgOverlay:setColor(unpack(ContractListHud.COLOR_BG))
-    self.bgOverlay:setPosition(px, py)
-    self.bgOverlay:setDimension(pw, ph)
-    self.bgOverlay:render()
+    local bg = ContractListHud.COLOR_BG
+    drawFilledRect(px, py, pw, ph, bg[1], bg[2], bg[3], bg[4])
 
     -- Draw header bar at the top (drag handle)
     local headerY = py + ph - headerH
     local headerColor = self.isDragging and ContractListHud.COLOR_HEADER_DRAG or ContractListHud.COLOR_HEADER_BG
-    self.headerOverlay:setColor(unpack(headerColor))
-    self.headerOverlay:setPosition(px, headerY)
-    self.headerOverlay:setDimension(pw, headerH)
-    self.headerOverlay:render()
+    drawFilledRect(px, headerY, pw, headerH, headerColor[1], headerColor[2], headerColor[3], headerColor[4])
 
     -- Draw header title
     setTextColor(unpack(ContractListHud.COLOR_TITLE))
@@ -372,10 +344,8 @@ function ContractListHud:draw()
 
             -- Draw separator line below row (except last)
             if i < math.min(self.maxVisibleRows, self.totalRows - self.scrollOffset) then
-                self.separatorOverlay:setColor(unpack(ContractListHud.COLOR_SEPARATOR))
-                self.separatorOverlay:setPosition(px + pad, rowY)
-                self.separatorOverlay:setDimension(contentWidth, 0.001)
-                self.separatorOverlay:render()
+                local sep = ContractListHud.COLOR_SEPARATOR
+                drawFilledRect(px + pad, rowY, contentWidth, 0.001, sep[1], sep[2], sep[3], sep[4])
             end
         end
 
@@ -424,10 +394,7 @@ function ContractListHud:drawTabBar(x, y, width, height)
         end
 
         -- Draw tab background
-        self.tabOverlay:setColor(unpack(tabColor))
-        self.tabOverlay:setPosition(tabX, y)
-        self.tabOverlay:setDimension(tabW, height)
-        self.tabOverlay:render()
+        drawFilledRect(tabX, y, tabW, height, tabColor[1], tabColor[2], tabColor[3], tabColor[4])
 
         -- Draw tab text
         local textColor = tab.id == self.activeTab and ContractListHud.COLOR_TITLE or ContractListHud.COLOR_TEXT_DIM
@@ -473,10 +440,7 @@ function ContractListHud:drawContractRow(mission, x, y, width, height, index, is
     else
         bgColor = ContractListHud.COLOR_ROW_BG
     end
-    self.rowOverlay:setColor(unpack(bgColor))
-    self.rowOverlay:setPosition(x, y)
-    self.rowOverlay:setDimension(width, height)
-    self.rowOverlay:render()
+    drawFilledRect(x, y, width, height, bgColor[1], bgColor[2], bgColor[3], bgColor[4])
 
     -- == Line 1: Type + Field (left) | Reward (right) ==
     local line1Y = y + height - ContractListHud.TEXT_SIZE_NORMAL - pad
@@ -542,10 +506,7 @@ function ContractListHud:drawContractRow(mission, x, y, width, height, index, is
                         and self.mouseY >= btnY and self.mouseY <= btnY + btnH)
 
         local btnColor = btnHovered and ContractListHud.COLOR_BTN_COLLECT_H or ContractListHud.COLOR_BTN_COLLECT
-        self.buttonOverlay:setColor(unpack(btnColor))
-        self.buttonOverlay:setPosition(btnX, btnY)
-        self.buttonOverlay:setDimension(btnW, btnH)
-        self.buttonOverlay:render()
+        drawFilledRect(btnX, btnY, btnW, btnH, btnColor[1], btnColor[2], btnColor[3], btnColor[4])
 
         setTextColor(unpack(ContractListHud.COLOR_BTN_TEXT))
         setTextAlignment(RenderText.ALIGN_CENTER)
@@ -571,10 +532,7 @@ function ContractListHud:drawContractRow(mission, x, y, width, height, index, is
                               and self.mouseY >= btnY and self.mouseY <= btnY + btnH)
 
         local cancelColor = cancelBtnHovered and ContractListHud.COLOR_BTN_CANCEL_H or ContractListHud.COLOR_BTN_CANCEL
-        self.buttonOverlay:setColor(unpack(cancelColor))
-        self.buttonOverlay:setPosition(cancelBtnX, btnY)
-        self.buttonOverlay:setDimension(btnW, btnH)
-        self.buttonOverlay:render()
+        drawFilledRect(cancelBtnX, btnY, btnW, btnH, cancelColor[1], cancelColor[2], cancelColor[3], cancelColor[4])
 
         setTextColor(unpack(ContractListHud.COLOR_BTN_TEXT))
         setTextAlignment(RenderText.ALIGN_CENTER)
@@ -609,10 +567,7 @@ function ContractListHud:drawAvailableRow(mission, x, y, width, height, index, i
     else
         bgColor = ContractListHud.COLOR_ROW_BG
     end
-    self.rowOverlay:setColor(unpack(bgColor))
-    self.rowOverlay:setPosition(x, y)
-    self.rowOverlay:setDimension(width, height)
-    self.rowOverlay:render()
+    drawFilledRect(x, y, width, height, bgColor[1], bgColor[2], bgColor[3], bgColor[4])
 
     -- == Line 1: Type + Field/Crop (left) | Reward (right) ==
     local line1Y = y + height - ContractListHud.TEXT_SIZE_NORMAL - pad
@@ -662,10 +617,7 @@ function ContractListHud:drawAvailableRow(mission, x, y, width, height, index, i
                     and self.mouseY >= btnY and self.mouseY <= btnY + btnH)
 
     local btnColor = btnHovered and ContractListHud.COLOR_BTN_ACCEPT_H or ContractListHud.COLOR_BTN_ACCEPT
-    self.buttonOverlay:setColor(unpack(btnColor))
-    self.buttonOverlay:setPosition(btnX, btnY)
-    self.buttonOverlay:setDimension(btnW, btnH)
-    self.buttonOverlay:render()
+    drawFilledRect(btnX, btnY, btnW, btnH, btnColor[1], btnColor[2], btnColor[3], btnColor[4])
 
     setTextColor(unpack(ContractListHud.COLOR_BTN_TEXT))
     setTextAlignment(RenderText.ALIGN_CENTER)
@@ -684,10 +636,8 @@ end
 
 --- Draw a scrollbar on the right edge of the content area.
 function ContractListHud:drawScrollbar(x, y, w, h)
-    self.scrollbarBgOverlay:setColor(unpack(ContractListHud.COLOR_SCROLLBAR_BG))
-    self.scrollbarBgOverlay:setPosition(x, y)
-    self.scrollbarBgOverlay:setDimension(w, h)
-    self.scrollbarBgOverlay:render()
+    local sbBg = ContractListHud.COLOR_SCROLLBAR_BG
+    drawFilledRect(x, y, w, h, sbBg[1], sbBg[2], sbBg[3], sbBg[4])
 
     if self.totalRows > 0 then
         local thumbRatio = self.maxVisibleRows / self.totalRows
@@ -697,10 +647,8 @@ function ContractListHud:drawScrollbar(x, y, w, h)
         local thumbOffset = (self.scrollOffset / maxScroll) * scrollRange
         local thumbY = y + h - thumbH - thumbOffset
 
-        self.scrollbarOverlay:setColor(unpack(ContractListHud.COLOR_SCROLLBAR))
-        self.scrollbarOverlay:setPosition(x, thumbY)
-        self.scrollbarOverlay:setDimension(w, thumbH)
-        self.scrollbarOverlay:render()
+        local sb = ContractListHud.COLOR_SCROLLBAR
+        drawFilledRect(x, thumbY, w, thumbH, sb[1], sb[2], sb[3], sb[4])
     end
 end
 
@@ -828,14 +776,16 @@ function ContractListHud:onMouseEvent(posX, posY, isDown, isUp, button)
         self.hoveredRow = self:getRowAtPosition(posX, posY)
     end
 
-    -- Mouse wheel scrolling
+    -- Mouse wheel scrolling -- set flag to block camera zoom
     if isDown then
         if button == Input.MOUSE_BUTTON_WHEEL_UP then
             self.scrollOffset = math.max(0, self.scrollOffset - ContractListHud.SCROLL_SPEED)
+            ContractListHud.mouseWheelUsed = true
             return true
         elseif button == Input.MOUSE_BUTTON_WHEEL_DOWN then
             local maxScroll = math.max(0, self.totalRows - self.maxVisibleRows)
             self.scrollOffset = math.min(maxScroll, self.scrollOffset + ContractListHud.SCROLL_SPEED)
+            ContractListHud.mouseWheelUsed = true
             return true
         end
     end
