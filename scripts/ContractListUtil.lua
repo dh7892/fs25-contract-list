@@ -89,7 +89,7 @@ function ContractListUtil.getActiveContracts()
         -- Log only active missions (owned by this farm) for clearer diagnostics
         local logCount = 0
         for i, m in ipairs(missions) do
-            if m.farmId == farmId and (m.status == MissionStatus.RUNNING or m.status == MissionStatus.FINISHED) then
+            if m.farmId == farmId and (m.status == MissionStatus.RUNNING or m.status == MissionStatus.FINISHED or m.status == MissionStatus.PREPARING) then
                 logCount = logCount + 1
                 Logging.info("[ContractList]   active[%d]: status=%s, farmId=%s, type=%s, field=%s",
                     logCount,
@@ -104,7 +104,9 @@ function ContractListUtil.getActiveContracts()
 
     for _, mission in ipairs(missions) do
         if mission.farmId == farmId then
-            if mission.status == MissionStatus.RUNNING or mission.status == MissionStatus.FINISHED then
+            if mission.status == MissionStatus.RUNNING
+                or mission.status == MissionStatus.FINISHED
+                or mission.status == MissionStatus.PREPARING then
                 table.insert(result, mission)
             end
         end
@@ -261,35 +263,98 @@ end
 function ContractListUtil.getExtraInfo(mission)
     local typeName = mission.type and mission.type.name or ""
 
-    -- For tree transport: try to find selling station name and any location info
+    -- For tree transport and supply transport: show pickup and delivery locations
     if typeName == "treeTransportMission" or typeName == "supplyTransportMission" then
-        local parts = {}
+        local pickupName = nil
+        local deliveryName = nil
 
-        -- Try sellingStation (delivery point)
-        if mission.sellingStation ~= nil then
-            local success, name = pcall(function() return mission.sellingStation:getName() end)
-            if success and name ~= nil and name ~= "" then
-                table.insert(parts, "To: " .. name)
+        -- Try multiple property names for the pickup/source location
+        local pickupProps = {"loadingStation", "pickupStation", "sourceStation", "startStation", "buyingStation"}
+        for _, prop in ipairs(pickupProps) do
+            if pickupName == nil and mission[prop] ~= nil then
+                local success, name = pcall(function() return mission[prop]:getName() end)
+                if success and name ~= nil and name ~= "" then
+                    pickupName = name
+                end
             end
         end
 
-        -- Try loadingStation / pickupStation (pickup point)
-        if mission.loadingStation ~= nil then
-            local success, name = pcall(function() return mission.loadingStation:getName() end)
-            if success and name ~= nil and name ~= "" then
-                table.insert(parts, "From: " .. name)
+        -- Try multiple property names for the delivery/selling location
+        local deliveryProps = {"sellingStation", "deliveryStation", "targetStation", "endStation"}
+        for _, prop in ipairs(deliveryProps) do
+            if deliveryName == nil and mission[prop] ~= nil then
+                local success, name = pcall(function() return mission[prop]:getName() end)
+                if success and name ~= nil and name ~= "" then
+                    deliveryName = name
+                end
             end
+        end
+
+        -- If we didn't find pickup/delivery from properties, try getDetails()
+        if pickupName == nil or deliveryName == nil then
+            local detailPickup, detailDelivery = ContractListUtil.extractTransportLocationsFromDetails(mission)
+            if pickupName == nil then pickupName = detailPickup end
+            if deliveryName == nil then deliveryName = detailDelivery end
+        end
+
+        -- Build result string
+        local parts = {}
+        if pickupName ~= nil then
+            table.insert(parts, "From: " .. pickupName)
+        end
+        if deliveryName ~= nil then
+            table.insert(parts, "To: " .. deliveryName)
         end
 
         if #parts > 0 then
             return table.concat(parts, " | ")
         end
 
-        -- Fallback: parse getDetails() for location info
+        -- Last resort fallback
         return ContractListUtil.extractLocationFromDetails(mission)
     end
 
     return ""
+end
+
+--- Extract pickup and delivery location names from getDetails() for transport missions.
+-- @param mission table The mission object
+-- @return string|nil pickupName, string|nil deliveryName
+function ContractListUtil.extractTransportLocationsFromDetails(mission)
+    local success, details = pcall(function() return mission:getDetails() end)
+    if not success or details == nil then
+        return nil, nil
+    end
+
+    local pickupName = nil
+    local deliveryName = nil
+
+    for _, detail in ipairs(details) do
+        local titleLower = detail.title and string.lower(detail.title) or ""
+        local value = detail.value
+
+        if value ~= nil and value ~= "" then
+            -- Pickup-related titles
+            if string.find(titleLower, "pickup") or string.find(titleLower, "from")
+               or string.find(titleLower, "loading") or string.find(titleLower, "source")
+               or string.find(titleLower, "start") then
+                if pickupName == nil then
+                    pickupName = value
+                end
+            end
+
+            -- Delivery-related titles
+            if string.find(titleLower, "deliver") or string.find(titleLower, "drop")
+               or string.find(titleLower, "to") or string.find(titleLower, "destination")
+               or string.find(titleLower, "selling") or string.find(titleLower, "target") then
+                if deliveryName == nil then
+                    deliveryName = value
+                end
+            end
+        end
+    end
+
+    return pickupName, deliveryName
 end
 
 --- Parse getDetails() to extract location-related values.
@@ -319,9 +384,22 @@ function ContractListUtil.extractLocationFromDetails(mission)
             Logging.info("[ContractList] TreeTransport properties:")
             for k, v in pairs(mission) do
                 if type(v) ~= "function" and type(v) ~= "table" then
-                    Logging.info("[ContractList]   %s = %s", tostring(k), tostring(v))
-                elseif type(v) == "table" then
-                    Logging.info("[ContractList]   %s = [table]", tostring(k))
+                    Logging.info("[ContractList]   %s = %s (%s)", tostring(k), tostring(v), type(v))
+                elseif type(v) == "table" or type(v) == "userdata" then
+                    -- Check if it has a getName method (station-like object)
+                    local hasGetName = false
+                    local nameStr = ""
+                    pcall(function()
+                        if v.getName ~= nil then
+                            hasGetName = true
+                            nameStr = v:getName() or "nil"
+                        end
+                    end)
+                    if hasGetName then
+                        Logging.info("[ContractList]   %s = [object getName()=%s]", tostring(k), nameStr)
+                    else
+                        Logging.info("[ContractList]   %s = [%s]", tostring(k), type(v))
+                    end
                 end
             end
         end
