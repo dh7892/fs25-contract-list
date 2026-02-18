@@ -55,20 +55,17 @@ ContractListHud.TEXT_SIZE_SMALL  = 0.012
 ContractListHud.TEXT_SIZE_TINY   = 0.010
 
 -- Spacing
-ContractListHud.HEADER_HEIGHT   = 0.038
-ContractListHud.ROW_HEIGHT      = 0.062
-ContractListHud.ROW_LINE_GAP    = 0.004
-ContractListHud.PADDING         = 0.008
-ContractListHud.PADDING_INNER   = 0.006
-ContractListHud.PROGRESS_HEIGHT = 0.006
-ContractListHud.SCROLLBAR_WIDTH = 0.005
+ContractListHud.HEADER_HEIGHT   = 0.032
+ContractListHud.ROW_HEIGHT      = 0.022    -- Single-line compact rows
+ContractListHud.PADDING         = 0.006
+ContractListHud.PADDING_INNER   = 0.004
+ContractListHud.SCROLLBAR_WIDTH = 0.004
 ContractListHud.SCROLL_SPEED    = 3
-ContractListHud.BUTTON_HEIGHT   = 0.018
-ContractListHud.BUTTON_PADDING  = 0.003
+ContractListHud.ICON_BTN_SIZE   = 0.016    -- Square icon button size
 
 -- Tab bar settings
-ContractListHud.TAB_HEIGHT      = 0.026
-ContractListHud.TAB_GAP         = 0.003
+ContractListHud.TAB_HEIGHT      = 0.022
+ContractListHud.TAB_GAP         = 0.002
 
 -- Tab identifiers
 ContractListHud.TAB_ACTIVE      = 1
@@ -423,13 +420,13 @@ function ContractListHud:drawTabBar(x, y, width, height)
     end
 end
 
---- Draw a single contract row with two lines of info.
--- Line 1: Type name + field (left), Reward (right)
--- Line 2: NPC name (left), Status/Progress (right)
+--- Draw a single active contract row (single line).
+-- Layout: [Type] [Field/Location | %]    [$Reward] [icon]
 function ContractListHud:drawContractRow(mission, x, y, width, height, index, isHovered)
     local data = ContractListUtil.getMissionDisplayData(mission)
     local pad = ContractListHud.PADDING_INNER
-    local lineGap = ContractListHud.ROW_LINE_GAP
+    local textSize = ContractListHud.TEXT_SIZE_SMALL
+    local iconSize = ContractListHud.ICON_BTN_SIZE
 
     -- Row background (alternating + hover)
     local bgColor
@@ -442,8 +439,52 @@ function ContractListHud:drawContractRow(mission, x, y, width, height, index, is
     end
     drawFilledRect(x, y, width, height, bgColor[1], bgColor[2], bgColor[3], bgColor[4])
 
-    -- == Line 1: Type + Field (left) | Reward (right) ==
-    local line1Y = y + height - ContractListHud.TEXT_SIZE_NORMAL - pad
+    -- Vertical center for text
+    local textY = y + (height - textSize) * 0.5
+
+    -- Icon button on far right
+    local iconBtnX = x + width - pad - iconSize
+    local iconBtnY = y + (height - iconSize) * 0.5
+    local iconChar, iconAction, iconColorNormal, iconColorHover
+
+    if data.isFinished then
+        iconChar = "+"  -- collect/checkmark
+        iconAction = "collect"
+        iconColorNormal = ContractListHud.COLOR_BTN_COLLECT
+        iconColorHover = ContractListHud.COLOR_BTN_COLLECT_H
+    elseif data.isRunning then
+        iconChar = "x"  -- cancel/cross
+        iconAction = "cancel"
+        iconColorNormal = ContractListHud.COLOR_BTN_CANCEL
+        iconColorHover = ContractListHud.COLOR_BTN_CANCEL_H
+    end
+
+    if iconChar ~= nil then
+        local btnHovered = (self.mouseX >= iconBtnX and self.mouseX <= iconBtnX + iconSize
+                        and self.mouseY >= iconBtnY and self.mouseY <= iconBtnY + iconSize)
+        local btnColor = btnHovered and iconColorHover or iconColorNormal
+        drawFilledRect(iconBtnX, iconBtnY, iconSize, iconSize, btnColor[1], btnColor[2], btnColor[3], btnColor[4])
+
+        setTextColor(unpack(ContractListHud.COLOR_BTN_TEXT))
+        setTextAlignment(RenderText.ALIGN_CENTER)
+        renderText(iconBtnX + iconSize * 0.5, iconBtnY + (iconSize - textSize) * 0.5, textSize, iconChar)
+
+        table.insert(self.clickRegions, {
+            x = iconBtnX, y = iconBtnY, w = iconSize, h = iconSize,
+            action = function()
+                if self.onActionCallback then
+                    self.onActionCallback(iconAction, mission)
+                end
+            end,
+        })
+    end
+
+    -- Reward (right-aligned, before the icon button)
+    local rewardStr = ContractListUtil.formatMoney(data.reward)
+    local rewardRightX = iconBtnX - pad
+    setTextColor(unpack(ContractListHud.COLOR_TEXT))
+    setTextAlignment(RenderText.ALIGN_RIGHT)
+    renderText(rewardRightX, textY, textSize, rewardStr)
 
     -- Type name (bold, colored by status)
     if data.isFinished then
@@ -455,11 +496,11 @@ function ContractListHud:drawContractRow(mission, x, y, width, height, index, is
     end
     setTextAlignment(RenderText.ALIGN_LEFT)
     setTextBold(true)
-    renderText(x + pad, line1Y, ContractListHud.TEXT_SIZE_NORMAL, data.typeName)
+    renderText(x + pad, textY, textSize, data.typeName)
     setTextBold(false)
 
-    -- Field + completion % (dimmed, after type name)
-    local afterType = getTextWidth(ContractListHud.TEXT_SIZE_NORMAL, data.typeName .. " ")
+    -- Field/location + completion % (dimmed, after type name with space)
+    local afterType = getTextWidth(textSize, data.typeName .. "  ")
     local detailParts = {}
     if data.fieldDesc ~= "" then
         table.insert(detailParts, data.fieldDesc)
@@ -470,93 +511,18 @@ function ContractListHud:drawContractRow(mission, x, y, width, height, index, is
     if #detailParts > 0 then
         local detailStr = table.concat(detailParts, " | ")
         setTextColor(unpack(ContractListHud.COLOR_TEXT_DIM))
-        renderText(x + pad + afterType, line1Y, ContractListHud.TEXT_SIZE_NORMAL, detailStr)
-    end
-
-    -- Reward (right-aligned on line 1)
-    local rewardStr = ContractListUtil.formatMoney(data.reward)
-    setTextColor(unpack(ContractListHud.COLOR_TEXT))
-    setTextAlignment(RenderText.ALIGN_RIGHT)
-    renderText(x + width - pad, line1Y, ContractListHud.TEXT_SIZE_NORMAL, rewardStr)
-
-    -- == Line 2: NPC (left) | buttons (right) ==
-    local line2Y = line1Y - ContractListHud.TEXT_SIZE_SMALL - lineGap
-
-    -- NPC name
-    if data.npcName ~= "" then
-        setTextColor(unpack(ContractListHud.COLOR_TEXT_DIM))
         setTextAlignment(RenderText.ALIGN_LEFT)
-        renderText(x + pad, line2Y, ContractListHud.TEXT_SIZE_SMALL, data.npcName)
-    end
-
-    -- Status / progress / buttons (right side of line 2)
-    local btnH = ContractListHud.BUTTON_HEIGHT
-    local btnPad = ContractListHud.BUTTON_PADDING
-    local btnY = line2Y - btnPad
-
-    if data.isFinished then
-        -- "Collect" button for finished contracts
-        local btnText = g_i18n:getText("contractList_collectPayment")
-        local btnTextW = getTextWidth(ContractListHud.TEXT_SIZE_SMALL, btnText)
-        local btnW = btnTextW + btnPad * 4
-        local btnX = x + width - pad - btnW
-
-        -- Check if mouse is over this button
-        local btnHovered = (self.mouseX >= btnX and self.mouseX <= btnX + btnW
-                        and self.mouseY >= btnY and self.mouseY <= btnY + btnH)
-
-        local btnColor = btnHovered and ContractListHud.COLOR_BTN_COLLECT_H or ContractListHud.COLOR_BTN_COLLECT
-        drawFilledRect(btnX, btnY, btnW, btnH, btnColor[1], btnColor[2], btnColor[3], btnColor[4])
-
-        setTextColor(unpack(ContractListHud.COLOR_BTN_TEXT))
-        setTextAlignment(RenderText.ALIGN_CENTER)
-        renderText(btnX + btnW * 0.5, btnY + (btnH - ContractListHud.TEXT_SIZE_SMALL) * 0.5, ContractListHud.TEXT_SIZE_SMALL, btnText)
-
-        -- Register click region
-        table.insert(self.clickRegions, {
-            x = btnX, y = btnY, w = btnW, h = btnH,
-            action = function()
-                if self.onActionCallback then
-                    self.onActionCallback("collect", mission)
-                end
-            end,
-        })
-
-    elseif data.isRunning then
-        -- "Cancel" button
-        local btnText = g_i18n:getText("contractList_cancel")
-        local btnTextW = getTextWidth(ContractListHud.TEXT_SIZE_SMALL, btnText)
-        local btnW = btnTextW + btnPad * 4
-        local cancelBtnX = x + width - pad - btnW
-        local cancelBtnHovered = (self.mouseX >= cancelBtnX and self.mouseX <= cancelBtnX + btnW
-                              and self.mouseY >= btnY and self.mouseY <= btnY + btnH)
-
-        local cancelColor = cancelBtnHovered and ContractListHud.COLOR_BTN_CANCEL_H or ContractListHud.COLOR_BTN_CANCEL
-        drawFilledRect(cancelBtnX, btnY, btnW, btnH, cancelColor[1], cancelColor[2], cancelColor[3], cancelColor[4])
-
-        setTextColor(unpack(ContractListHud.COLOR_BTN_TEXT))
-        setTextAlignment(RenderText.ALIGN_CENTER)
-        renderText(cancelBtnX + btnW * 0.5, btnY + (btnH - ContractListHud.TEXT_SIZE_SMALL) * 0.5, ContractListHud.TEXT_SIZE_SMALL, btnText)
-
-        -- Register click region for cancel
-        table.insert(self.clickRegions, {
-            x = cancelBtnX, y = btnY, w = btnW, h = btnH,
-            action = function()
-                if self.onActionCallback then
-                    self.onActionCallback("cancel", mission)
-                end
-            end,
-        })
+        renderText(x + pad + afterType, textY, textSize, detailStr)
     end
 end
 
---- Draw a single available contract row with two lines of info.
--- Line 1: Type name + field/crop (left), Reward (right)
--- Line 2: NPC name (left), Accept button (right)
+--- Draw a single available contract row (single line).
+-- Layout: [Type] [Field/Crop]    [$Reward] [+]
 function ContractListHud:drawAvailableRow(mission, x, y, width, height, index, isHovered)
     local data = ContractListUtil.getMissionDisplayData(mission)
     local pad = ContractListHud.PADDING_INNER
-    local lineGap = ContractListHud.ROW_LINE_GAP
+    local textSize = ContractListHud.TEXT_SIZE_SMALL
+    local iconSize = ContractListHud.ICON_BTN_SIZE
 
     -- Row background (alternating + hover)
     local bgColor
@@ -569,69 +535,51 @@ function ContractListHud:drawAvailableRow(mission, x, y, width, height, index, i
     end
     drawFilledRect(x, y, width, height, bgColor[1], bgColor[2], bgColor[3], bgColor[4])
 
-    -- == Line 1: Type + Field/Crop (left) | Reward (right) ==
-    local line1Y = y + height - ContractListHud.TEXT_SIZE_NORMAL - pad
+    -- Vertical center for text
+    local textY = y + (height - textSize) * 0.5
 
-    -- Type name (bold, default text color for available)
-    setTextColor(unpack(ContractListHud.COLOR_TEXT))
-    setTextAlignment(RenderText.ALIGN_LEFT)
-    setTextBold(true)
-    renderText(x + pad, line1Y, ContractListHud.TEXT_SIZE_NORMAL, data.typeName)
-    setTextBold(false)
-
-    -- Field + crop (dimmed, after type name)
-    local afterType = getTextWidth(ContractListHud.TEXT_SIZE_NORMAL, data.typeName .. " ")
-    if data.fieldDesc ~= "" then
-        setTextColor(unpack(ContractListHud.COLOR_TEXT_DIM))
-        renderText(x + pad + afterType, line1Y, ContractListHud.TEXT_SIZE_NORMAL, data.fieldDesc)
-    end
-
-    -- Reward (right-aligned on line 1)
-    local rewardStr = ContractListUtil.formatMoney(data.reward)
-    setTextColor(unpack(ContractListHud.COLOR_TEXT))
-    setTextAlignment(RenderText.ALIGN_RIGHT)
-    renderText(x + width - pad, line1Y, ContractListHud.TEXT_SIZE_NORMAL, rewardStr)
-
-    -- == Line 2: NPC (left) | Accept button (right) ==
-    local line2Y = line1Y - ContractListHud.TEXT_SIZE_SMALL - lineGap
-
-    -- NPC name
-    if data.npcName ~= "" then
-        setTextColor(unpack(ContractListHud.COLOR_TEXT_DIM))
-        setTextAlignment(RenderText.ALIGN_LEFT)
-        renderText(x + pad, line2Y, ContractListHud.TEXT_SIZE_SMALL, data.npcName)
-    end
-
-    -- "Accept" button
-    local btnH = ContractListHud.BUTTON_HEIGHT
-    local btnPad = ContractListHud.BUTTON_PADDING
-    local btnY = line2Y - btnPad
-
-    local btnText = g_i18n:getText("contractList_acceptNoBorrow")
-    local btnTextW = getTextWidth(ContractListHud.TEXT_SIZE_SMALL, btnText)
-    local btnW = btnTextW + btnPad * 4
-    local btnX = x + width - pad - btnW
-
-    -- Check if mouse is over this button
-    local btnHovered = (self.mouseX >= btnX and self.mouseX <= btnX + btnW
-                    and self.mouseY >= btnY and self.mouseY <= btnY + btnH)
-
+    -- Accept icon button on far right
+    local iconBtnX = x + width - pad - iconSize
+    local iconBtnY = y + (height - iconSize) * 0.5
+    local btnHovered = (self.mouseX >= iconBtnX and self.mouseX <= iconBtnX + iconSize
+                    and self.mouseY >= iconBtnY and self.mouseY <= iconBtnY + iconSize)
     local btnColor = btnHovered and ContractListHud.COLOR_BTN_ACCEPT_H or ContractListHud.COLOR_BTN_ACCEPT
-    drawFilledRect(btnX, btnY, btnW, btnH, btnColor[1], btnColor[2], btnColor[3], btnColor[4])
+    drawFilledRect(iconBtnX, iconBtnY, iconSize, iconSize, btnColor[1], btnColor[2], btnColor[3], btnColor[4])
 
     setTextColor(unpack(ContractListHud.COLOR_BTN_TEXT))
     setTextAlignment(RenderText.ALIGN_CENTER)
-    renderText(btnX + btnW * 0.5, btnY + (btnH - ContractListHud.TEXT_SIZE_SMALL) * 0.5, ContractListHud.TEXT_SIZE_SMALL, btnText)
+    renderText(iconBtnX + iconSize * 0.5, iconBtnY + (iconSize - textSize) * 0.5, textSize, "+")
 
-    -- Register click region
     table.insert(self.clickRegions, {
-        x = btnX, y = btnY, w = btnW, h = btnH,
+        x = iconBtnX, y = iconBtnY, w = iconSize, h = iconSize,
         action = function()
             if self.onActionCallback then
                 self.onActionCallback("accept", mission)
             end
         end,
     })
+
+    -- Reward (right-aligned, before the icon button)
+    local rewardStr = ContractListUtil.formatMoney(data.reward)
+    local rewardRightX = iconBtnX - pad
+    setTextColor(unpack(ContractListHud.COLOR_TEXT))
+    setTextAlignment(RenderText.ALIGN_RIGHT)
+    renderText(rewardRightX, textY, textSize, rewardStr)
+
+    -- Type name (bold)
+    setTextColor(unpack(ContractListHud.COLOR_TEXT))
+    setTextAlignment(RenderText.ALIGN_LEFT)
+    setTextBold(true)
+    renderText(x + pad, textY, textSize, data.typeName)
+    setTextBold(false)
+
+    -- Field/crop (dimmed, after type name with space)
+    local afterType = getTextWidth(textSize, data.typeName .. "  ")
+    if data.fieldDesc ~= "" then
+        setTextColor(unpack(ContractListHud.COLOR_TEXT_DIM))
+        setTextAlignment(RenderText.ALIGN_LEFT)
+        renderText(x + pad + afterType, textY, textSize, data.fieldDesc)
+    end
 end
 
 --- Draw a scrollbar on the right edge of the content area.
