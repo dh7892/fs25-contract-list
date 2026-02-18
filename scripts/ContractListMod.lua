@@ -23,6 +23,9 @@ ContractListMod._origMarkSideNotificationProgressBarForDrawing = nil
 ContractListMod._origRemoveSideNotificationProgressBar = nil
 ContractListMod._hudOverridesInstalled = false
 
+-- Input capture state (prevent scroll zoom and click-to-switch over panel)
+ContractListMod._inputOverridesInstalled = false
+
 --- Called when the map is loaded. Initialize the mod.
 -- @param filename string Map filename
 function ContractListMod:loadMap(filename)
@@ -48,8 +51,89 @@ function ContractListMod:loadMap(filename)
     -- Install built-in progress bar suppression hooks
     self:installProgressBarOverrides()
 
+    -- Install input capture overrides (block scroll zoom / click-to-switch over panel)
+    self:installInputOverrides()
+
     self.isLoaded = true
     Logging.info("[ContractList] Mod loaded successfully")
+end
+
+--- Check if the mouse is currently over our HUD panel.
+-- Used by input override guards to decide whether to suppress game input.
+-- @return boolean
+function ContractListMod:isMouseOverPanel()
+    if self.hud == nil or not self.hud:getIsVisible() then
+        return false
+    end
+    return self.hud:isInsidePanel(self.hud.mouseX, self.hud.mouseY)
+end
+
+--- Install overrides on camera zoom and click-to-switch to prevent
+-- game input from passing through our HUD panel.
+function ContractListMod:installInputOverrides()
+    if self._inputOverridesInstalled then
+        return
+    end
+
+    -- Override camera zoom in/out (CoursePlay approach)
+    -- These are the action event handlers on Enterable that process scroll wheel
+    if Enterable ~= nil then
+        if Enterable.actionEventCameraZoomIn ~= nil then
+            Enterable.actionEventCameraZoomIn = Utils.overwrittenFunction(
+                Enterable.actionEventCameraZoomIn,
+                function(vehicle, superFunc, ...)
+                    if ContractListMod:isMouseOverPanel() then
+                        return
+                    end
+                    return superFunc(vehicle, ...)
+                end
+            )
+        end
+
+        if Enterable.actionEventCameraZoomOut ~= nil then
+            Enterable.actionEventCameraZoomOut = Utils.overwrittenFunction(
+                Enterable.actionEventCameraZoomOut,
+                function(vehicle, superFunc, ...)
+                    if ContractListMod:isMouseOverPanel() then
+                        return
+                    end
+                    return superFunc(vehicle, ...)
+                end
+            )
+        end
+
+        Logging.info("[ContractList] Camera zoom overrides installed")
+    end
+
+    -- Override VehicleCamera.zoomSmoothly as additional safety (AutoDrive approach)
+    if VehicleCamera ~= nil and VehicleCamera.zoomSmoothly ~= nil then
+        VehicleCamera.zoomSmoothly = Utils.overwrittenFunction(
+            VehicleCamera.zoomSmoothly,
+            function(camera, superFunc, ...)
+                if ContractListMod:isMouseOverPanel() then
+                    return
+                end
+                return superFunc(camera, ...)
+            end
+        )
+        Logging.info("[ContractList] VehicleCamera.zoomSmoothly override installed")
+    end
+
+    -- Override click-to-switch-vehicle when clicking on our panel
+    if Player ~= nil and Player.enterVehicleRaycastClickToSwitch ~= nil then
+        Player.enterVehicleRaycastClickToSwitch = Utils.overwrittenFunction(
+            Player.enterVehicleRaycastClickToSwitch,
+            function(player, superFunc, x, y, ...)
+                if ContractListMod:isMouseOverPanel() then
+                    return
+                end
+                return superFunc(player, x, y, ...)
+            end
+        )
+        Logging.info("[ContractList] Click-to-switch override installed")
+    end
+
+    self._inputOverridesInstalled = true
 end
 
 --- Install overrides on the game HUD to conditionally suppress mission progress bars.

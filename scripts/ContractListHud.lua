@@ -16,32 +16,33 @@ ContractListHud.PANEL_WIDTH    = 0.21
 ContractListHud.PANEL_HEIGHT   = 0.80
 
 -- Colors (r, g, b, a)
-ContractListHud.COLOR_BG            = {0.01, 0.01, 0.01, 0.82}
-ContractListHud.COLOR_HEADER_BG     = {0.08, 0.08, 0.08, 0.95}
-ContractListHud.COLOR_HEADER_DRAG   = {0.12, 0.12, 0.18, 0.95}  -- Header while dragging
-ContractListHud.COLOR_ROW_BG        = {0.06, 0.06, 0.06, 0.60}
-ContractListHud.COLOR_ROW_ALT_BG    = {0.09, 0.09, 0.09, 0.60}
-ContractListHud.COLOR_ROW_HOVER_BG  = {0.15, 0.15, 0.20, 0.70}
-ContractListHud.COLOR_SEPARATOR     = {0.25, 0.25, 0.25, 0.50}
+-- Colors: CP-inspired dark semi-transparent style
+ContractListHud.COLOR_BG            = {0.0, 0.0, 0.0, 0.75}      -- Main panel (black @ 75%)
+ContractListHud.COLOR_HEADER_BG     = {0.0, 0.0, 0.0, 0.90}      -- Header bar
+ContractListHud.COLOR_HEADER_DRAG   = {0.08, 0.08, 0.15, 0.90}   -- Header while dragging
+ContractListHud.COLOR_ROW_BG        = {0.0, 0.0, 0.0, 0.0}       -- Transparent (panel bg shows)
+ContractListHud.COLOR_ROW_ALT_BG    = {0.10, 0.10, 0.10, 0.30}   -- Subtle alternating stripe
+ContractListHud.COLOR_ROW_HOVER_BG  = {0.15, 0.20, 0.30, 0.50}   -- Hover highlight
+ContractListHud.COLOR_SEPARATOR     = {0.30, 0.30, 0.30, 0.40}
 ContractListHud.COLOR_TITLE         = {1.0, 1.0, 1.0, 1.0}
-ContractListHud.COLOR_TEXT          = {0.88, 0.88, 0.88, 1.0}
-ContractListHud.COLOR_TEXT_DIM      = {0.55, 0.55, 0.55, 1.0}
+ContractListHud.COLOR_TEXT          = {0.90, 0.90, 0.90, 1.0}
+ContractListHud.COLOR_TEXT_DIM      = {0.60, 0.60, 0.60, 1.0}
 ContractListHud.COLOR_GREEN         = {0.30, 0.80, 0.30, 1.0}
 ContractListHud.COLOR_YELLOW        = {0.95, 0.75, 0.15, 1.0}
 ContractListHud.COLOR_PROGRESS_BG   = {0.15, 0.15, 0.15, 0.80}
 ContractListHud.COLOR_PROGRESS_BAR  = {0.35, 0.70, 0.35, 0.90}
-ContractListHud.COLOR_SCROLLBAR_BG  = {0.10, 0.10, 0.10, 0.60}
-ContractListHud.COLOR_SCROLLBAR     = {0.40, 0.40, 0.40, 0.80}
-ContractListHud.COLOR_BTN_COLLECT   = {0.20, 0.55, 0.20, 0.90}  -- Green button
-ContractListHud.COLOR_BTN_COLLECT_H = {0.25, 0.70, 0.25, 1.00}  -- Green hover
-ContractListHud.COLOR_BTN_CANCEL    = {0.55, 0.20, 0.20, 0.90}  -- Red button
-ContractListHud.COLOR_BTN_CANCEL_H  = {0.70, 0.25, 0.25, 1.00}  -- Red hover
-ContractListHud.COLOR_BTN_ACCEPT    = {0.20, 0.40, 0.65, 0.90}  -- Blue button
-ContractListHud.COLOR_BTN_ACCEPT_H  = {0.25, 0.50, 0.80, 1.00}  -- Blue hover
+ContractListHud.COLOR_SCROLLBAR_BG  = {0.10, 0.10, 0.10, 0.50}
+ContractListHud.COLOR_SCROLLBAR     = {0.45, 0.45, 0.45, 0.70}
+ContractListHud.COLOR_BTN_COLLECT   = {0.20, 0.55, 0.20, 0.90}   -- Green button
+ContractListHud.COLOR_BTN_COLLECT_H = {0.25, 0.70, 0.25, 1.00}   -- Green hover
+ContractListHud.COLOR_BTN_CANCEL    = {0.55, 0.20, 0.20, 0.90}   -- Red button
+ContractListHud.COLOR_BTN_CANCEL_H  = {0.70, 0.25, 0.25, 1.00}   -- Red hover
+ContractListHud.COLOR_BTN_ACCEPT    = {0.20, 0.40, 0.65, 0.90}   -- Blue button
+ContractListHud.COLOR_BTN_ACCEPT_H  = {0.25, 0.50, 0.80, 1.00}   -- Blue hover
 ContractListHud.COLOR_BTN_TEXT      = {1.0, 1.0, 1.0, 1.0}
-ContractListHud.COLOR_TAB_ACTIVE    = {0.15, 0.15, 0.20, 0.95}  -- Selected tab
-ContractListHud.COLOR_TAB_INACTIVE  = {0.06, 0.06, 0.06, 0.80}  -- Unselected tab
-ContractListHud.COLOR_TAB_HOVER     = {0.12, 0.12, 0.16, 0.90}  -- Hovered tab
+ContractListHud.COLOR_TAB_ACTIVE    = {0.10, 0.10, 0.15, 0.90}   -- Selected tab
+ContractListHud.COLOR_TAB_INACTIVE  = {0.0, 0.0, 0.0, 0.50}      -- Unselected tab
+ContractListHud.COLOR_TAB_HOVER     = {0.08, 0.08, 0.12, 0.70}   -- Hovered tab
 
 -- Text sizes (normalized)
 ContractListHud.TEXT_SIZE_TITLE  = 0.020
