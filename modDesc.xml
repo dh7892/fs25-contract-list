@@ -26,6 +26,7 @@ Standard-Tastenbelegung: Linke Strg + Punkt (aenderbar unter Einstellungen > Ste
 
     <extraSourceFiles>
         <sourceFile filename="scripts/ContractListUtil.lua"/>
+        <sourceFile filename="scripts/ContractListEvents.lua"/>
         <sourceFile filename="scripts/ContractListHud.lua"/>
         <sourceFile filename="scripts/ContractListMod.lua"/>
     </extraSourceFiles>

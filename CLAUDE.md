@@ -82,8 +82,12 @@ FS25_ContractList/
 - Click regions registered each frame and tested in mouseEvent()
 - Draggable panel via header bar with position persistence
 
-### Phase 4: Multiplayer Support
+### Phase 4: Multiplayer Support (DONE)
 - Network events for server-authoritative contract mutations
+- Three event classes: ContractListStartEvent, ContractListCancelEvent, ContractListDismissEvent
+- Client sends event to server; server executes g_missionManager calls
+- Missions identified across network by generationId
+- In singleplayer (g_server ~= nil) events execute directly, no network round-trip
 
 ### Phase 5: Available Contracts View (DONE)
 - Tab switching (Active / Available) with click-to-switch tab bar

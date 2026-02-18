@@ -326,6 +326,9 @@ function ContractListMod:onToggleAction(actionName, inputValue)
 end
 
 --- Handle contract actions from HUD button clicks.
+-- Uses network events so actions work in both singleplayer and multiplayer.
+-- In SP (where we are the server), the event executes directly.
+-- In MP clients, the event is sent to the server for execution.
 -- @param actionType string "collect", "cancel", or "accept"
 -- @param mission table The mission object
 function ContractListMod:onContractAction(actionType, mission)
@@ -338,16 +341,7 @@ function ContractListMod:onContractAction(actionType, mission)
         if mission.status == MissionStatus.FINISHED then
             Logging.info("[ContractList] Collecting payment for mission: %s",
                 tostring(ContractListUtil.getMissionTypeName(mission)))
-
-            local success, err = pcall(function()
-                g_missionManager:dismissMission(mission)
-            end)
-
-            if success then
-                Logging.info("[ContractList] Payment collected successfully")
-            else
-                Logging.warning("[ContractList] Failed to collect payment: %s", tostring(err))
-            end
+            ContractListDismissEvent.sendEvent(mission)
         end
 
     elseif actionType == "cancel" then
@@ -355,67 +349,18 @@ function ContractListMod:onContractAction(actionType, mission)
         if mission.status == MissionStatus.RUNNING then
             Logging.info("[ContractList] Cancelling mission: %s",
                 tostring(ContractListUtil.getMissionTypeName(mission)))
-
-            local success, err = pcall(function()
-                g_missionManager:cancelMission(mission)
-            end)
-
-            if success then
-                Logging.info("[ContractList] Mission cancelled")
-            else
-                Logging.warning("[ContractList] Failed to cancel mission: %s", tostring(err))
-            end
+            ContractListCancelEvent.sendEvent(mission)
         end
 
     elseif actionType == "accept" then
         -- Accept an available contract (without borrowing vehicles)
         if mission.status == MissionStatus.CREATED then
-            -- Check contract limit first
-            if ContractListUtil.hasReachedContractLimit() then
-                Logging.info("[ContractList] Cannot accept: contract limit reached")
-                return
-            end
-
             local farmId = ContractListUtil.getFarmId()
-            Logging.info("[ContractList] Accepting mission: %s (our farmId=%s, mission.farmId before=%s, status before=%s)",
+            Logging.info("[ContractList] Accepting mission: %s (farmId=%s, generationId=%s)",
                 tostring(ContractListUtil.getMissionTypeName(mission)),
                 tostring(farmId),
-                tostring(mission.farmId),
-                tostring(mission.status))
-
-            -- Try startMission, then ensure farmId is set
-            local success, err = pcall(function()
-                g_missionManager:startMission(mission)
-            end)
-
-            if success then
-                -- startMission may not set farmId; force it after
-                if mission.farmId == nil or mission.farmId ~= farmId then
-                    Logging.info("[ContractList] Setting farmId after startMission (was %s)", tostring(mission.farmId))
-                    mission.farmId = farmId
-                end
-                Logging.info("[ContractList] Mission accepted: status=%s, farmId=%s",
-                    tostring(mission.status), tostring(mission.farmId))
-            else
-                Logging.warning("[ContractList] startMission failed: %s, trying assignFarm approach", tostring(err))
-
-                -- Fallback: try assigning farm and starting manually
-                local success2, err2 = pcall(function()
-                    mission.farmId = farmId
-                    if mission.start ~= nil then
-                        mission:start()
-                    elseif mission.startMission ~= nil then
-                        mission:startMission()
-                    end
-                end)
-
-                if success2 then
-                    Logging.info("[ContractList] Manual start: status=%s, farmId=%s",
-                        tostring(mission.status), tostring(mission.farmId))
-                else
-                    Logging.warning("[ContractList] Manual start also failed: %s", tostring(err2))
-                end
-            end
+                tostring(mission.generationId))
+            ContractListStartEvent.sendEvent(mission, farmId)
         end
     end
 end
