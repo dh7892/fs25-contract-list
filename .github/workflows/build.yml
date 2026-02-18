@@ -12,23 +12,21 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build zip
+      - name: Stage mod files
         run: |
-          # Collect mod files into a staging directory so the zip
+          # Collect mod files into a staging directory so the artifact
           # contains them at the root level (no parent folder).
           mkdir -p staging
           cp modDesc.xml staging/
           cp -r scripts staging/
           cp -r languages staging/
-
           cp icon_contractList.dds staging/
-
-          cd staging
-          zip -r ../FS25_ContractList.zip . -x "*.DS_Store"
+          # Remove any macOS junk files
+          find staging -name '.DS_Store' -delete
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: FS25_ContractList
-          path: FS25_ContractList.zip
+          path: staging/*
           retention-days: 30
