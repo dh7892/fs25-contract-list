@@ -17,7 +17,10 @@ ContractListHud.mouseWheelUsed = false
 ContractListHud.DEFAULT_X      = 0.78
 ContractListHud.DEFAULT_Y      = 0.10
 ContractListHud.PANEL_WIDTH    = 0.21
-ContractListHud.PANEL_HEIGHT   = 0.80
+ContractListHud.DEFAULT_HEIGHT = 0.50
+ContractListHud.MIN_HEIGHT     = 0.15
+ContractListHud.MAX_HEIGHT     = 0.90
+ContractListHud.HEIGHT_STEP    = 0.05    -- Each +/- click changes height by this
 
 -- Colors (r, g, b, a)
 -- Colors: CP-inspired dark semi-transparent style
@@ -82,9 +85,10 @@ function ContractListHud.new()
     self.isVisible = false
     self.isInitialized = false
 
-    -- Panel position (mutable, can be dragged)
+    -- Panel position and size (mutable, can be dragged/resized)
     self.panelX = ContractListHud.DEFAULT_X
     self.panelY = ContractListHud.DEFAULT_Y
+    self.panelHeight = ContractListHud.DEFAULT_HEIGHT
 
     -- Scroll state
     self.scrollOffset = 0
@@ -144,7 +148,7 @@ end
 -- @param y number Normalized Y (bottom edge)
 function ContractListHud:setPosition(x, y)
     local pw = ContractListHud.PANEL_WIDTH
-    local ph = ContractListHud.PANEL_HEIGHT
+    local ph = self.panelHeight
     local headerH = ContractListHud.HEADER_HEIGHT
 
     -- Horizontal: keep full panel width on screen
@@ -163,8 +167,43 @@ function ContractListHud:getPosition()
     return self.panelX, self.panelY
 end
 
---- Set a callback to be called when the panel is moved.
--- @param callback function(x, y) Called with new position after drag ends
+--- Set the panel height, clamped to min/max bounds.
+-- @param h number Normalized height
+function ContractListHud:setHeight(h)
+    self.panelHeight = math.max(ContractListHud.MIN_HEIGHT, math.min(h, ContractListHud.MAX_HEIGHT))
+    -- Re-clamp position since height changed
+    self:setPosition(self.panelX, self.panelY)
+end
+
+--- Get the current panel height.
+-- @return number height
+function ContractListHud:getHeight()
+    return self.panelHeight
+end
+
+--- Adjust the panel height by a delta. The panel grows/shrinks from the bottom
+-- (header stays at same position) by adjusting panelY to compensate.
+-- @param delta number Amount to change height (positive = taller, negative = shorter)
+function ContractListHud:adjustHeight(delta)
+    local oldHeight = self.panelHeight
+    local newHeight = math.max(ContractListHud.MIN_HEIGHT, math.min(oldHeight + delta, ContractListHud.MAX_HEIGHT))
+    if newHeight ~= oldHeight then
+        -- Adjust Y so the top (header) stays in place: top = panelY + panelHeight
+        local top = self.panelY + oldHeight
+        self.panelHeight = newHeight
+        self.panelY = top - newHeight
+        -- Re-clamp position
+        self:setPosition(self.panelX, self.panelY)
+
+        -- Notify for persistence
+        if self.onMoveCallback ~= nil then
+            self.onMoveCallback(self.panelX, self.panelY)
+        end
+    end
+end
+
+--- Set a callback to be called when the panel is moved or resized.
+-- @param callback function(x, y) Called with new position after drag ends or resize
 function ContractListHud:setOnMoveCallback(callback)
     self.onMoveCallback = callback
 end
@@ -206,7 +245,7 @@ end
 -- @param posY number Normalized Y
 -- @return boolean
 function ContractListHud:isInsideHeader(posX, posY)
-    local headerY = self.panelY + ContractListHud.PANEL_HEIGHT - ContractListHud.HEADER_HEIGHT
+    local headerY = self.panelY + self.panelHeight - ContractListHud.HEADER_HEIGHT
     return posX >= self.panelX
        and posX <= self.panelX + ContractListHud.PANEL_WIDTH
        and posY >= headerY
@@ -221,7 +260,7 @@ function ContractListHud:isInsidePanel(posX, posY)
     return posX >= self.panelX
        and posX <= self.panelX + ContractListHud.PANEL_WIDTH
        and posY >= self.panelY
-       and posY <= self.panelY + ContractListHud.PANEL_HEIGHT
+       and posY <= self.panelY + self.panelHeight
 end
 
 --- Draw the HUD panel. Called every frame from ContractListMod:draw().
@@ -242,7 +281,7 @@ function ContractListHud:draw()
     local px = self.panelX
     local py = self.panelY
     local pw = ContractListHud.PANEL_WIDTH
-    local ph = ContractListHud.PANEL_HEIGHT
+    local ph = self.panelHeight
     local pad = ContractListHud.PADDING
     local headerH = ContractListHud.HEADER_HEIGHT
     local tabH = ContractListHud.TAB_HEIGHT
@@ -269,17 +308,44 @@ function ContractListHud:draw()
     )
     setTextBold(false)
 
-    -- Draw drag hint
-    if self.isDragging then
-        setTextColor(unpack(ContractListHud.COLOR_TEXT_DIM))
-        setTextAlignment(RenderText.ALIGN_RIGHT)
-        renderText(
-            px + pw - pad,
-            headerY + (headerH - ContractListHud.TEXT_SIZE_SMALL) * 0.5,
-            ContractListHud.TEXT_SIZE_SMALL,
-            "..."
-        )
-    end
+    -- Draw +/- resize buttons on right side of header
+    local resizeBtnSize = headerH * 0.65
+    local resizeBtnY = headerY + (headerH - resizeBtnSize) * 0.5
+    local resizeBtnGap = pad * 0.5
+
+    -- "-" button (shrink height)
+    local minusBtnX = px + pw - pad - resizeBtnSize
+    local minusHovered = (self.mouseX >= minusBtnX and self.mouseX <= minusBtnX + resizeBtnSize
+                      and self.mouseY >= resizeBtnY and self.mouseY <= resizeBtnY + resizeBtnSize)
+    local minusColor = minusHovered and ContractListHud.COLOR_TAB_HOVER or ContractListHud.COLOR_TAB_INACTIVE
+    drawFilledRect(minusBtnX, resizeBtnY, resizeBtnSize, resizeBtnSize, minusColor[1], minusColor[2], minusColor[3], minusColor[4])
+    setTextColor(unpack(ContractListHud.COLOR_TEXT_DIM))
+    setTextAlignment(RenderText.ALIGN_CENTER)
+    renderText(minusBtnX + resizeBtnSize * 0.5, resizeBtnY + (resizeBtnSize - ContractListHud.TEXT_SIZE_SMALL) * 0.5, ContractListHud.TEXT_SIZE_SMALL, "-")
+
+    table.insert(self.clickRegions, {
+        x = minusBtnX, y = resizeBtnY, w = resizeBtnSize, h = resizeBtnSize,
+        action = function()
+            self:adjustHeight(-ContractListHud.HEIGHT_STEP)
+        end,
+    })
+
+    -- "+" button (grow height)
+    local plusBtnX = minusBtnX - resizeBtnGap - resizeBtnSize
+    local plusHovered = (self.mouseX >= plusBtnX and self.mouseX <= plusBtnX + resizeBtnSize
+                    and self.mouseY >= resizeBtnY and self.mouseY <= resizeBtnY + resizeBtnSize)
+    local plusColor = plusHovered and ContractListHud.COLOR_TAB_HOVER or ContractListHud.COLOR_TAB_INACTIVE
+    drawFilledRect(plusBtnX, resizeBtnY, resizeBtnSize, resizeBtnSize, plusColor[1], plusColor[2], plusColor[3], plusColor[4])
+    setTextColor(unpack(ContractListHud.COLOR_TEXT_DIM))
+    setTextAlignment(RenderText.ALIGN_CENTER)
+    renderText(plusBtnX + resizeBtnSize * 0.5, resizeBtnY + (resizeBtnSize - ContractListHud.TEXT_SIZE_SMALL) * 0.5, ContractListHud.TEXT_SIZE_SMALL, "+")
+
+    table.insert(self.clickRegions, {
+        x = plusBtnX, y = resizeBtnY, w = resizeBtnSize, h = resizeBtnSize,
+        action = function()
+            self:adjustHeight(ContractListHud.HEIGHT_STEP)
+        end,
+    })
 
     -- Draw tab bar below header
     local tabY = headerY - tabH
@@ -605,7 +671,7 @@ end
 -- @param posY number Normalized Y
 -- @return boolean
 function ContractListHud:isInsideTabBar(posX, posY)
-    local tabY = self.panelY + ContractListHud.PANEL_HEIGHT - ContractListHud.HEADER_HEIGHT - ContractListHud.TAB_HEIGHT
+    local tabY = self.panelY + self.panelHeight - ContractListHud.HEADER_HEIGHT - ContractListHud.TAB_HEIGHT
     return posX >= self.panelX
        and posX <= self.panelX + ContractListHud.PANEL_WIDTH
        and posY >= tabY
@@ -642,7 +708,7 @@ function ContractListHud:getRowAtPosition(posX, posY)
     local tabH = ContractListHud.TAB_HEIGHT
     local rowH = ContractListHud.ROW_HEIGHT
 
-    local contentTop = self.panelY + ContractListHud.PANEL_HEIGHT - headerH - tabH - pad
+    local contentTop = self.panelY + self.panelHeight - headerH - tabH - pad
 
     if posY > contentTop or posY < self.panelY + pad then
         return -1
@@ -741,18 +807,7 @@ function ContractListHud:onMouseEvent(posX, posY, isDown, isUp, button)
     -- Left mouse button
     if button == Input.MOUSE_BUTTON_LEFT then
         if isDown then
-            -- Start drag if clicking the header
-            if self:isInsideHeader(posX, posY) then
-                self.isDragging = true
-                self.dragStarted = false
-                self.dragStartMouseX = posX
-                self.dragStartMouseY = posY
-                self.dragOffsetX = posX - self.panelX
-                self.dragOffsetY = posY - self.panelY
-                return true
-            end
-
-            -- Check click regions (buttons)
+            -- Check click regions first (buttons, tabs, +/- in header)
             for _, region in ipairs(self.clickRegions) do
                 if posX >= region.x and posX <= region.x + region.w
                    and posY >= region.y and posY <= region.y + region.h then
@@ -761,6 +816,17 @@ function ContractListHud:onMouseEvent(posX, posY, isDown, isUp, button)
                     end
                     return true
                 end
+            end
+
+            -- Start drag if clicking the header (but not on a button)
+            if self:isInsideHeader(posX, posY) then
+                self.isDragging = true
+                self.dragStarted = false
+                self.dragStartMouseX = posX
+                self.dragStartMouseY = posY
+                self.dragOffsetX = posX - self.panelX
+                self.dragOffsetY = posY - self.panelY
+                return true
             end
 
             -- Consume click in content area

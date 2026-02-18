@@ -246,6 +246,12 @@ function ContractListMod:loadSettings()
 
     local posX = getXMLFloat(xmlFile, "ContractList.hud#posX")
     local posY = getXMLFloat(xmlFile, "ContractList.hud#posY")
+    local height = getXMLFloat(xmlFile, "ContractList.hud#height")
+
+    if height ~= nil then
+        self.hud:setHeight(height)
+        Logging.info("[ContractList] Loaded panel height: %.3f", height)
+    end
 
     if posX ~= nil and posY ~= nil then
         self.hud:setPosition(posX, posY)
@@ -276,6 +282,7 @@ function ContractListMod:saveSettings()
     local posX, posY = self.hud:getPosition()
     setXMLFloat(xmlFile, "ContractList.hud#posX", posX)
     setXMLFloat(xmlFile, "ContractList.hud#posY", posY)
+    setXMLFloat(xmlFile, "ContractList.hud#height", self.hud:getHeight())
 
     saveXMLFile(xmlFile)
     delete(xmlFile)
