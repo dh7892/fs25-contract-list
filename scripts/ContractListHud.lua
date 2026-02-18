@@ -36,7 +36,12 @@ ContractListHud.COLOR_BTN_COLLECT   = {0.20, 0.55, 0.20, 0.90}  -- Green button
 ContractListHud.COLOR_BTN_COLLECT_H = {0.25, 0.70, 0.25, 1.00}  -- Green hover
 ContractListHud.COLOR_BTN_CANCEL    = {0.55, 0.20, 0.20, 0.90}  -- Red button
 ContractListHud.COLOR_BTN_CANCEL_H  = {0.70, 0.25, 0.25, 1.00}  -- Red hover
+ContractListHud.COLOR_BTN_ACCEPT    = {0.20, 0.40, 0.65, 0.90}  -- Blue button
+ContractListHud.COLOR_BTN_ACCEPT_H  = {0.25, 0.50, 0.80, 1.00}  -- Blue hover
 ContractListHud.COLOR_BTN_TEXT      = {1.0, 1.0, 1.0, 1.0}
+ContractListHud.COLOR_TAB_ACTIVE    = {0.15, 0.15, 0.20, 0.95}  -- Selected tab
+ContractListHud.COLOR_TAB_INACTIVE  = {0.06, 0.06, 0.06, 0.80}  -- Unselected tab
+ContractListHud.COLOR_TAB_HOVER     = {0.12, 0.12, 0.16, 0.90}  -- Hovered tab
 
 -- Text sizes (normalized)
 ContractListHud.TEXT_SIZE_TITLE  = 0.020
@@ -55,6 +60,14 @@ ContractListHud.SCROLLBAR_WIDTH = 0.005
 ContractListHud.SCROLL_SPEED    = 3
 ContractListHud.BUTTON_HEIGHT   = 0.018
 ContractListHud.BUTTON_PADDING  = 0.003
+
+-- Tab bar settings
+ContractListHud.TAB_HEIGHT      = 0.026
+ContractListHud.TAB_GAP         = 0.003
+
+-- Tab identifiers
+ContractListHud.TAB_ACTIVE      = 1
+ContractListHud.TAB_AVAILABLE   = 2
 
 -- Drag settings
 ContractListHud.DRAG_DEAD_ZONE  = 0.003   -- Min movement to start drag (normalized)
@@ -102,11 +115,15 @@ function ContractListHud.new()
     -- Click regions: list of {x, y, w, h, action, data} tables
     self.clickRegions = {}
 
+    -- Tab state
+    self.activeTab = ContractListHud.TAB_ACTIVE
+    self.hoveredTab = 0  -- 0 = no tab hovered
+
     -- Callback for when position changes (set by ContractListMod for persistence)
     self.onMoveCallback = nil
 
     -- Callback for contract actions: function(actionType, mission)
-    -- actionType: "collect" or "cancel"
+    -- actionType: "collect", "cancel", or "accept"
     self.onActionCallback = nil
 
     return self
@@ -129,6 +146,7 @@ function ContractListHud:init()
     self.scrollbarBgOverlay = Overlay.new(pixelPath, 0, 0, 1, 1)
     self.scrollbarOverlay   = Overlay.new(pixelPath, 0, 0, 1, 1)
     self.buttonOverlay      = Overlay.new(pixelPath, 0, 0, 1, 1)
+    self.tabOverlay         = Overlay.new(pixelPath, 0, 0, 1, 1)
 
     self.isInitialized = true
     Logging.info("[ContractList] HUD initialized")
@@ -139,7 +157,7 @@ function ContractListHud:delete()
     local overlays = {
         "bgOverlay", "headerOverlay", "rowOverlay",
         "progressBgOverlay", "progressBarOverlay", "separatorOverlay",
-        "scrollbarBgOverlay", "scrollbarOverlay", "buttonOverlay",
+        "scrollbarBgOverlay", "scrollbarOverlay", "buttonOverlay", "tabOverlay",
     }
     for _, name in ipairs(overlays) do
         if self[name] ~= nil then
@@ -195,6 +213,7 @@ function ContractListHud:setVisible(visible)
     if not visible then
         self.scrollOffset = 0
         self.hoveredRow = -1
+        self.hoveredTab = 0
         self.isDragging = false
         self.dragStarted = false
     end
@@ -251,6 +270,7 @@ function ContractListHud:draw()
     local ph = ContractListHud.PANEL_HEIGHT
     local pad = ContractListHud.PADDING
     local headerH = ContractListHud.HEADER_HEIGHT
+    local tabH = ContractListHud.TAB_HEIGHT
     local rowH = ContractListHud.ROW_HEIGHT
 
     -- Draw panel background
@@ -259,7 +279,7 @@ function ContractListHud:draw()
     self.bgOverlay:setDimension(pw, ph)
     self.bgOverlay:render()
 
-    -- Draw header bar at the top (different color while dragging)
+    -- Draw header bar at the top (drag handle)
     local headerY = py + ph - headerH
     local headerColor = self.isDragging and ContractListHud.COLOR_HEADER_DRAG or ContractListHud.COLOR_HEADER_BG
     self.headerOverlay:setColor(unpack(headerColor))
@@ -267,12 +287,7 @@ function ContractListHud:draw()
     self.headerOverlay:setDimension(pw, headerH)
     self.headerOverlay:render()
 
-    -- Get contract data (before title so we can show count)
-    local contracts = ContractListUtil.getActiveContracts()
-    self.totalRows = #contracts
-
-    -- Draw title text with count
-    local titleText = string.format("%s (%d)", g_i18n:getText("contractList_titleActive"), self.totalRows)
+    -- Draw header title
     setTextColor(unpack(ContractListHud.COLOR_TITLE))
     setTextBold(true)
     setTextAlignment(RenderText.ALIGN_LEFT)
@@ -280,23 +295,40 @@ function ContractListHud:draw()
         px + pad,
         headerY + (headerH - ContractListHud.TEXT_SIZE_TITLE) * 0.5,
         ContractListHud.TEXT_SIZE_TITLE,
-        titleText
+        g_i18n:getText("contractList_modName")
     )
     setTextBold(false)
 
-    -- Draw drag hint in header (right side)
-    local hintText = self.isDragging and "..." or string.format("%d contract%s", self.totalRows, self.totalRows == 1 and "" or "s")
-    setTextColor(unpack(ContractListHud.COLOR_TEXT_DIM))
-    setTextAlignment(RenderText.ALIGN_RIGHT)
-    renderText(
-        px + pw - pad - ContractListHud.SCROLLBAR_WIDTH - pad,
-        headerY + (headerH - ContractListHud.TEXT_SIZE_SMALL) * 0.5,
-        ContractListHud.TEXT_SIZE_SMALL,
-        hintText
-    )
+    -- Draw drag hint
+    if self.isDragging then
+        setTextColor(unpack(ContractListHud.COLOR_TEXT_DIM))
+        setTextAlignment(RenderText.ALIGN_RIGHT)
+        renderText(
+            px + pw - pad,
+            headerY + (headerH - ContractListHud.TEXT_SIZE_SMALL) * 0.5,
+            ContractListHud.TEXT_SIZE_SMALL,
+            "..."
+        )
+    end
 
-    -- Calculate content area
-    local contentTop = headerY - pad
+    -- Draw tab bar below header
+    local tabY = headerY - tabH
+    self:drawTabBar(px, tabY, pw, tabH)
+
+    -- Get contract data based on active tab
+    local contracts
+    local emptyText
+    if self.activeTab == ContractListHud.TAB_ACTIVE then
+        contracts = ContractListUtil.getActiveContracts()
+        emptyText = g_i18n:getText("contractList_noActiveContracts")
+    else
+        contracts = ContractListUtil.getAvailableContracts()
+        emptyText = g_i18n:getText("contractList_noAvailableContracts")
+    end
+    self.totalRows = #contracts
+
+    -- Calculate content area (below tab bar)
+    local contentTop = tabY - pad
     local contentBottom = py + pad
     local contentHeight = contentTop - contentBottom
     self.maxVisibleRows = math.floor(contentHeight / rowH)
@@ -313,7 +345,7 @@ function ContractListHud:draw()
             px + pw * 0.5,
             py + ph * 0.5,
             ContractListHud.TEXT_SIZE_NORMAL,
-            g_i18n:getText("contractList_noActiveContracts")
+            emptyText
         )
     else
         -- Draw visible rows
@@ -331,7 +363,11 @@ function ContractListHud:draw()
             end
 
             local isHovered = (self.hoveredRow == dataIndex)
-            self:drawContractRow(mission, px + pad, rowY, contentWidth, rowH, dataIndex, isHovered)
+            if self.activeTab == ContractListHud.TAB_ACTIVE then
+                self:drawContractRow(mission, px + pad, rowY, contentWidth, rowH, dataIndex, isHovered)
+            else
+                self:drawAvailableRow(mission, px + pad, rowY, contentWidth, rowH, dataIndex, isHovered)
+            end
 
             -- Draw separator line below row (except last)
             if i < math.min(self.maxVisibleRows, self.totalRows - self.scrollOffset) then
@@ -352,6 +388,71 @@ function ContractListHud:draw()
     setTextColor(1, 1, 1, 1)
     setTextAlignment(RenderText.ALIGN_LEFT)
     setTextBold(false)
+end
+
+--- Draw the tab bar with Active / Available tabs.
+-- @param x number Left edge X
+-- @param y number Bottom edge Y of tab bar
+-- @param width number Full width
+-- @param height number Tab bar height
+function ContractListHud:drawTabBar(x, y, width, height)
+    local pad = ContractListHud.PADDING
+    local gap = ContractListHud.TAB_GAP
+    local tabW = (width - gap) * 0.5
+
+    -- Get counts for tab labels
+    local activeCount = #ContractListUtil.getActiveContracts()
+    local availableCount = #ContractListUtil.getAvailableContracts()
+
+    local tabs = {
+        { id = ContractListHud.TAB_ACTIVE,    label = string.format("%s (%d)", g_i18n:getText("contractList_titleActive"), activeCount) },
+        { id = ContractListHud.TAB_AVAILABLE, label = string.format("%s (%d)", g_i18n:getText("contractList_titleAvailable"), availableCount) },
+    }
+
+    for i, tab in ipairs(tabs) do
+        local tabX = x + (i - 1) * (tabW + gap)
+
+        -- Determine tab color
+        local tabColor
+        if tab.id == self.activeTab then
+            tabColor = ContractListHud.COLOR_TAB_ACTIVE
+        elseif self.hoveredTab == tab.id then
+            tabColor = ContractListHud.COLOR_TAB_HOVER
+        else
+            tabColor = ContractListHud.COLOR_TAB_INACTIVE
+        end
+
+        -- Draw tab background
+        self.tabOverlay:setColor(unpack(tabColor))
+        self.tabOverlay:setPosition(tabX, y)
+        self.tabOverlay:setDimension(tabW, height)
+        self.tabOverlay:render()
+
+        -- Draw tab text
+        local textColor = tab.id == self.activeTab and ContractListHud.COLOR_TITLE or ContractListHud.COLOR_TEXT_DIM
+        setTextColor(unpack(textColor))
+        setTextBold(tab.id == self.activeTab)
+        setTextAlignment(RenderText.ALIGN_CENTER)
+        renderText(
+            tabX + tabW * 0.5,
+            y + (height - ContractListHud.TEXT_SIZE_SMALL) * 0.5,
+            ContractListHud.TEXT_SIZE_SMALL,
+            tab.label
+        )
+        setTextBold(false)
+
+        -- Register click region for tab
+        table.insert(self.clickRegions, {
+            x = tabX, y = y, w = tabW, h = height,
+            action = function()
+                if self.activeTab ~= tab.id then
+                    self.activeTab = tab.id
+                    self.scrollOffset = 0
+                    self.hoveredRow = -1
+                end
+            end,
+        })
+    end
 end
 
 --- Draw a single contract row with two lines of info.
@@ -490,6 +591,96 @@ function ContractListHud:drawContractRow(mission, x, y, width, height, index, is
     end
 end
 
+--- Draw a single available contract row with two lines of info.
+-- Line 1: Type name + field/crop (left), Reward (right)
+-- Line 2: NPC name (left), Accept button (right)
+function ContractListHud:drawAvailableRow(mission, x, y, width, height, index, isHovered)
+    local data = ContractListUtil.getMissionDisplayData(mission)
+    local pad = ContractListHud.PADDING_INNER
+    local lineGap = ContractListHud.ROW_LINE_GAP
+
+    -- Row background (alternating + hover)
+    local bgColor
+    if isHovered then
+        bgColor = ContractListHud.COLOR_ROW_HOVER_BG
+    elseif index % 2 == 0 then
+        bgColor = ContractListHud.COLOR_ROW_ALT_BG
+    else
+        bgColor = ContractListHud.COLOR_ROW_BG
+    end
+    self.rowOverlay:setColor(unpack(bgColor))
+    self.rowOverlay:setPosition(x, y)
+    self.rowOverlay:setDimension(width, height)
+    self.rowOverlay:render()
+
+    -- == Line 1: Type + Field/Crop (left) | Reward (right) ==
+    local line1Y = y + height - ContractListHud.TEXT_SIZE_NORMAL - pad
+
+    -- Type name (bold, default text color for available)
+    setTextColor(unpack(ContractListHud.COLOR_TEXT))
+    setTextAlignment(RenderText.ALIGN_LEFT)
+    setTextBold(true)
+    renderText(x + pad, line1Y, ContractListHud.TEXT_SIZE_NORMAL, data.typeName)
+    setTextBold(false)
+
+    -- Field + crop (dimmed, after type name)
+    local afterType = getTextWidth(ContractListHud.TEXT_SIZE_NORMAL, data.typeName .. " ")
+    if data.fieldDesc ~= "" then
+        setTextColor(unpack(ContractListHud.COLOR_TEXT_DIM))
+        renderText(x + pad + afterType, line1Y, ContractListHud.TEXT_SIZE_NORMAL, data.fieldDesc)
+    end
+
+    -- Reward (right-aligned on line 1)
+    local rewardStr = ContractListUtil.formatMoney(data.reward)
+    setTextColor(unpack(ContractListHud.COLOR_TEXT))
+    setTextAlignment(RenderText.ALIGN_RIGHT)
+    renderText(x + width - pad, line1Y, ContractListHud.TEXT_SIZE_NORMAL, rewardStr)
+
+    -- == Line 2: NPC (left) | Accept button (right) ==
+    local line2Y = line1Y - ContractListHud.TEXT_SIZE_SMALL - lineGap
+
+    -- NPC name
+    if data.npcName ~= "" then
+        setTextColor(unpack(ContractListHud.COLOR_TEXT_DIM))
+        setTextAlignment(RenderText.ALIGN_LEFT)
+        renderText(x + pad, line2Y, ContractListHud.TEXT_SIZE_SMALL, data.npcName)
+    end
+
+    -- "Accept" button
+    local btnH = ContractListHud.BUTTON_HEIGHT
+    local btnPad = ContractListHud.BUTTON_PADDING
+    local btnY = line2Y - btnPad
+
+    local btnText = g_i18n:getText("contractList_acceptNoBorrow")
+    local btnTextW = getTextWidth(ContractListHud.TEXT_SIZE_SMALL, btnText)
+    local btnW = btnTextW + btnPad * 4
+    local btnX = x + width - pad - btnW
+
+    -- Check if mouse is over this button
+    local btnHovered = (self.mouseX >= btnX and self.mouseX <= btnX + btnW
+                    and self.mouseY >= btnY and self.mouseY <= btnY + btnH)
+
+    local btnColor = btnHovered and ContractListHud.COLOR_BTN_ACCEPT_H or ContractListHud.COLOR_BTN_ACCEPT
+    self.buttonOverlay:setColor(unpack(btnColor))
+    self.buttonOverlay:setPosition(btnX, btnY)
+    self.buttonOverlay:setDimension(btnW, btnH)
+    self.buttonOverlay:render()
+
+    setTextColor(unpack(ContractListHud.COLOR_BTN_TEXT))
+    setTextAlignment(RenderText.ALIGN_CENTER)
+    renderText(btnX + btnW * 0.5, btnY + (btnH - ContractListHud.TEXT_SIZE_SMALL) * 0.5, ContractListHud.TEXT_SIZE_SMALL, btnText)
+
+    -- Register click region
+    table.insert(self.clickRegions, {
+        x = btnX, y = btnY, w = btnW, h = btnH,
+        action = function()
+            if self.onActionCallback then
+                self.onActionCallback("accept", mission)
+            end
+        end,
+    })
+end
+
 --- Draw a scrollbar on the right edge of the content area.
 function ContractListHud:drawScrollbar(x, y, w, h)
     self.scrollbarBgOverlay:setColor(unpack(ContractListHud.COLOR_SCROLLBAR_BG))
@@ -512,14 +703,49 @@ function ContractListHud:drawScrollbar(x, y, w, h)
     end
 end
 
+--- Check if a point is inside the tab bar area.
+-- @param posX number Normalized X
+-- @param posY number Normalized Y
+-- @return boolean
+function ContractListHud:isInsideTabBar(posX, posY)
+    local tabY = self.panelY + ContractListHud.PANEL_HEIGHT - ContractListHud.HEADER_HEIGHT - ContractListHud.TAB_HEIGHT
+    return posX >= self.panelX
+       and posX <= self.panelX + ContractListHud.PANEL_WIDTH
+       and posY >= tabY
+       and posY <= tabY + ContractListHud.TAB_HEIGHT
+end
+
+--- Get which tab ID the mouse is hovering over.
+-- @param posX number Normalized X
+-- @param posY number Normalized Y
+-- @return number Tab ID or 0 if not over a tab
+function ContractListHud:getTabAtPosition(posX, posY)
+    if not self:isInsideTabBar(posX, posY) then
+        return 0
+    end
+
+    local gap = ContractListHud.TAB_GAP
+    local tabW = (ContractListHud.PANEL_WIDTH - gap) * 0.5
+    local relX = posX - self.panelX
+
+    if relX < tabW then
+        return ContractListHud.TAB_ACTIVE
+    elseif relX > tabW + gap then
+        return ContractListHud.TAB_AVAILABLE
+    end
+
+    return 0
+end
+
 --- Determine which row index the mouse is hovering over.
 -- @return number Row index (1-based into full list) or -1
 function ContractListHud:getRowAtPosition(posX, posY)
     local pad = ContractListHud.PADDING
     local headerH = ContractListHud.HEADER_HEIGHT
+    local tabH = ContractListHud.TAB_HEIGHT
     local rowH = ContractListHud.ROW_HEIGHT
 
-    local contentTop = self.panelY + ContractListHud.PANEL_HEIGHT - headerH - pad
+    local contentTop = self.panelY + ContractListHud.PANEL_HEIGHT - headerH - tabH - pad
 
     if posY > contentTop or posY < self.panelY + pad then
         return -1
@@ -593,8 +819,9 @@ function ContractListHud:onMouseEvent(posX, posY, isDown, isUp, button)
         return false
     end
 
-    -- Track hovered row (only when not in header)
-    if self:isInsideHeader(posX, posY) then
+    -- Track hovered tab and row
+    self.hoveredTab = self:getTabAtPosition(posX, posY)
+    if self:isInsideHeader(posX, posY) or self:isInsideTabBar(posX, posY) then
         self.hoveredRow = -1
     else
         self.hoveredRow = self:getRowAtPosition(posX, posY)

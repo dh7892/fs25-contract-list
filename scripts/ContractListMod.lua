@@ -248,7 +248,7 @@ function ContractListMod:onToggleAction(actionName, inputValue)
 end
 
 --- Handle contract actions from HUD button clicks.
--- @param actionType string "collect" or "cancel"
+-- @param actionType string "collect", "cancel", or "accept"
 -- @param mission table The mission object
 function ContractListMod:onContractAction(actionType, mission)
     if mission == nil or g_missionManager == nil then
@@ -286,6 +286,38 @@ function ContractListMod:onContractAction(actionType, mission)
                 Logging.info("[ContractList] Mission cancelled")
             else
                 Logging.warning("[ContractList] Failed to cancel mission: %s", tostring(err))
+            end
+        end
+
+    elseif actionType == "accept" then
+        -- Accept an available contract (without borrowing vehicles)
+        if mission.status == MissionStatus.CREATED then
+            -- Check contract limit first
+            if ContractListUtil.hasReachedContractLimit() then
+                Logging.info("[ContractList] Cannot accept: contract limit reached")
+                return
+            end
+
+            Logging.info("[ContractList] Accepting mission: %s",
+                tostring(ContractListUtil.getMissionTypeName(mission)))
+
+            local success, err = pcall(function()
+                mission:tryToAccept()
+            end)
+
+            if success then
+                Logging.info("[ContractList] Mission accepted successfully")
+            else
+                Logging.warning("[ContractList] Failed to accept mission: %s", tostring(err))
+                -- Fallback: try startMission on the manager
+                local success2, err2 = pcall(function()
+                    g_missionManager:startMission(mission)
+                end)
+                if success2 then
+                    Logging.info("[ContractList] Mission accepted via startMission fallback")
+                else
+                    Logging.warning("[ContractList] startMission fallback also failed: %s", tostring(err2))
+                end
             end
         end
     end

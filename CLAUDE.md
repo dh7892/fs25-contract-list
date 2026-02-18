@@ -85,13 +85,14 @@ FS25_ContractList/
 ### Phase 4: Multiplayer Support
 - Network events for server-authoritative contract mutations
 
-### Phase 5: Available Contracts View
-- Tab switching (Active / Available)
-- Accept + Borrow, Accept No Equip, Hide buttons
+### Phase 5: Available Contracts View (DONE)
+- Tab switching (Active / Available) with click-to-switch tab bar
+- Accept button on available contracts (tryToAccept + startMission fallback)
+- Contract limit check before accepting
+- Built-in progress bars hidden when panel is open, restored on close
 
 ### Phase 6: Progress Bars
 - Horizontal completion bars per active contract
-- Investigate hiding built-in progress bars
 
 ### Phase 7: Polish & QoL
 - Sorting, filtering, persistence, full localization, ModHub prep
