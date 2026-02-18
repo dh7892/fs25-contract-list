@@ -305,18 +305,38 @@ function ContractListMod:onContractAction(actionType, mission)
                 tostring(mission.farmId),
                 tostring(mission.status))
 
-            -- Assign our farm to the mission before starting
-            mission.farmId = farmId
-
+            -- Try startMission, then ensure farmId is set
             local success, err = pcall(function()
                 g_missionManager:startMission(mission)
             end)
 
             if success then
+                -- startMission may not set farmId; force it after
+                if mission.farmId == nil or mission.farmId ~= farmId then
+                    Logging.info("[ContractList] Setting farmId after startMission (was %s)", tostring(mission.farmId))
+                    mission.farmId = farmId
+                end
                 Logging.info("[ContractList] Mission accepted: status=%s, farmId=%s",
                     tostring(mission.status), tostring(mission.farmId))
             else
-                Logging.warning("[ContractList] startMission failed: %s", tostring(err))
+                Logging.warning("[ContractList] startMission failed: %s, trying assignFarm approach", tostring(err))
+
+                -- Fallback: try assigning farm and starting manually
+                local success2, err2 = pcall(function()
+                    mission.farmId = farmId
+                    if mission.start ~= nil then
+                        mission:start()
+                    elseif mission.startMission ~= nil then
+                        mission:startMission()
+                    end
+                end)
+
+                if success2 then
+                    Logging.info("[ContractList] Manual start: status=%s, farmId=%s",
+                        tostring(mission.status), tostring(mission.farmId))
+                else
+                    Logging.warning("[ContractList] Manual start also failed: %s", tostring(err2))
+                end
             end
         end
     end
