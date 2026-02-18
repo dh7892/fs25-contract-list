@@ -17,12 +17,12 @@ ContractListHud.PANEL_HEIGHT   = 0.80
 
 -- Colors (r, g, b, a)
 -- Colors: CP-inspired dark semi-transparent style
-ContractListHud.COLOR_BG            = {0.0, 0.0, 0.0, 0.75}      -- Main panel (black @ 75%)
-ContractListHud.COLOR_HEADER_BG     = {0.0, 0.0, 0.0, 0.90}      -- Header bar
-ContractListHud.COLOR_HEADER_DRAG   = {0.08, 0.08, 0.15, 0.90}   -- Header while dragging
-ContractListHud.COLOR_ROW_BG        = {0.0, 0.0, 0.0, 0.0}       -- Transparent (panel bg shows)
-ContractListHud.COLOR_ROW_ALT_BG    = {0.10, 0.10, 0.10, 0.30}   -- Subtle alternating stripe
-ContractListHud.COLOR_ROW_HOVER_BG  = {0.15, 0.20, 0.30, 0.50}   -- Hover highlight
+ContractListHud.COLOR_BG            = {0.0, 0.0, 0.0, 0.80}      -- Main panel (black @ 80%)
+ContractListHud.COLOR_HEADER_BG     = {0.0, 0.0, 0.0, 0.92}      -- Header bar
+ContractListHud.COLOR_HEADER_DRAG   = {0.08, 0.08, 0.15, 0.92}   -- Header while dragging
+ContractListHud.COLOR_ROW_BG        = {0.05, 0.05, 0.05, 0.40}   -- Slightly visible row bg
+ContractListHud.COLOR_ROW_ALT_BG    = {0.12, 0.12, 0.12, 0.50}   -- Alternating stripe
+ContractListHud.COLOR_ROW_HOVER_BG  = {0.15, 0.20, 0.30, 0.60}   -- Hover highlight
 ContractListHud.COLOR_SEPARATOR     = {0.30, 0.30, 0.30, 0.40}
 ContractListHud.COLOR_TITLE         = {1.0, 1.0, 1.0, 1.0}
 ContractListHud.COLOR_TEXT          = {0.90, 0.90, 0.90, 1.0}

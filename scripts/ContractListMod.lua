@@ -60,12 +60,20 @@ end
 
 --- Check if the mouse is currently over our HUD panel.
 -- Used by input override guards to decide whether to suppress game input.
+-- CRITICAL: This must never error, or it will break game input permanently.
 -- @return boolean
-function ContractListMod:isMouseOverPanel()
-    if self.hud == nil or not self.hud:getIsVisible() then
-        return false
+function ContractListMod.isMouseOverPanel()
+    local success, result = pcall(function()
+        local hud = ContractListMod.hud
+        if hud == nil or not hud.isVisible then
+            return false
+        end
+        return hud:isInsidePanel(hud.mouseX, hud.mouseY)
+    end)
+    if not success then
+        return false  -- Never block input on error
     end
-    return self.hud:isInsidePanel(self.hud.mouseX, self.hud.mouseY)
+    return result == true
 end
 
 --- Install overrides on camera zoom and click-to-switch to prevent
@@ -76,13 +84,13 @@ function ContractListMod:installInputOverrides()
     end
 
     -- Override camera zoom in/out (CoursePlay approach)
-    -- These are the action event handlers on Enterable that process scroll wheel
+    -- Utils.overwrittenFunction signature: function(self, superFunc, ...)
     if Enterable ~= nil then
         if Enterable.actionEventCameraZoomIn ~= nil then
             Enterable.actionEventCameraZoomIn = Utils.overwrittenFunction(
                 Enterable.actionEventCameraZoomIn,
                 function(vehicle, superFunc, ...)
-                    if ContractListMod:isMouseOverPanel() then
+                    if ContractListMod.isMouseOverPanel() then
                         return
                     end
                     return superFunc(vehicle, ...)
@@ -94,7 +102,7 @@ function ContractListMod:installInputOverrides()
             Enterable.actionEventCameraZoomOut = Utils.overwrittenFunction(
                 Enterable.actionEventCameraZoomOut,
                 function(vehicle, superFunc, ...)
-                    if ContractListMod:isMouseOverPanel() then
+                    if ContractListMod.isMouseOverPanel() then
                         return
                     end
                     return superFunc(vehicle, ...)
@@ -105,29 +113,15 @@ function ContractListMod:installInputOverrides()
         Logging.info("[ContractList] Camera zoom overrides installed")
     end
 
-    -- Override VehicleCamera.zoomSmoothly as additional safety (AutoDrive approach)
-    if VehicleCamera ~= nil and VehicleCamera.zoomSmoothly ~= nil then
-        VehicleCamera.zoomSmoothly = Utils.overwrittenFunction(
-            VehicleCamera.zoomSmoothly,
-            function(camera, superFunc, ...)
-                if ContractListMod:isMouseOverPanel() then
-                    return
-                end
-                return superFunc(camera, ...)
-            end
-        )
-        Logging.info("[ContractList] VehicleCamera.zoomSmoothly override installed")
-    end
-
     -- Override click-to-switch-vehicle when clicking on our panel
     if Player ~= nil and Player.enterVehicleRaycastClickToSwitch ~= nil then
         Player.enterVehicleRaycastClickToSwitch = Utils.overwrittenFunction(
             Player.enterVehicleRaycastClickToSwitch,
-            function(player, superFunc, x, y, ...)
-                if ContractListMod:isMouseOverPanel() then
+            function(player, superFunc, ...)
+                if ContractListMod.isMouseOverPanel() then
                     return
                 end
-                return superFunc(player, x, y, ...)
+                return superFunc(player, ...)
             end
         )
         Logging.info("[ContractList] Click-to-switch override installed")
