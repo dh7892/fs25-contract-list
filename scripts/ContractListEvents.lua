@@ -39,6 +39,46 @@ local function findMissionById(generationId)
     return nil
 end
 
+--- Start a mission with farmId, handling API variations.
+-- Tries startMission(mission, farmId, false) first (3-arg form).
+-- Falls back to setting mission.farmId manually + startMission(mission).
+-- @param mission table The mission to start
+-- @param farmId number The farm ID accepting the contract
+-- @return boolean success
+-- @return string|nil error message on failure
+local function doStartMission(mission, farmId)
+    -- Try 3-arg form first: startMission(mission, farmId, spawnVehicles)
+    local success, err = pcall(function()
+        g_missionManager:startMission(mission, farmId, false)
+    end)
+
+    if success then
+        -- Ensure farmId is set (some versions may not propagate it)
+        if mission.farmId ~= farmId then
+            mission.farmId = farmId
+        end
+        return true, nil
+    end
+
+    -- Fallback: 1-arg form with manual farmId assignment
+    Logging.info("[ContractList] 3-arg startMission failed (%s), trying 1-arg fallback", tostring(err))
+    mission.farmId = farmId
+
+    local success2, err2 = pcall(function()
+        g_missionManager:startMission(mission)
+    end)
+
+    if success2 then
+        -- Ensure farmId stuck
+        if mission.farmId ~= farmId then
+            mission.farmId = farmId
+        end
+        return true, nil
+    end
+
+    return false, tostring(err2)
+end
+
 -- ============================================================================
 -- ContractListStartEvent: Accept/start a contract
 -- ============================================================================
@@ -90,9 +130,7 @@ function ContractListStartEvent:run(connection)
             return
         end
 
-        local success, err = pcall(function()
-            g_missionManager:startMission(mission, self.farmId, false)
-        end)
+        local success, err = doStartMission(mission, self.farmId)
 
         if success then
             Logging.info("[ContractList] StartEvent: mission started (generationId=%d, farmId=%d)",
@@ -124,9 +162,7 @@ function ContractListStartEvent.sendEvent(mission, farmId)
             return
         end
 
-        local success, err = pcall(function()
-            g_missionManager:startMission(mission, farmId, false)
-        end)
+        local success, err = doStartMission(mission, farmId)
 
         if success then
             Logging.info("[ContractList] Mission started directly (server, generationId=%d)",

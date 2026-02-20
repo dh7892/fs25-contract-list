@@ -360,7 +360,29 @@ function ContractListMod:onContractAction(actionType, mission)
                 tostring(ContractListUtil.getMissionTypeName(mission)),
                 tostring(farmId),
                 tostring(mission.generationId))
-            ContractListStartEvent.sendEvent(mission, farmId)
+
+            if mission.generationId == nil then
+                -- generationId not available -- fall back to direct call (SP only)
+                Logging.warning("[ContractList] Mission has no generationId, using direct start")
+                if g_server ~= nil then
+                    mission.farmId = farmId
+                    local success, err = pcall(function()
+                        g_missionManager:startMission(mission)
+                    end)
+                    if success then
+                        if mission.farmId ~= farmId then
+                            mission.farmId = farmId
+                        end
+                        Logging.info("[ContractList] Mission accepted (direct fallback)")
+                    else
+                        Logging.warning("[ContractList] Direct start failed: %s", tostring(err))
+                    end
+                else
+                    Logging.warning("[ContractList] Cannot accept without generationId in MP")
+                end
+            else
+                ContractListStartEvent.sendEvent(mission, farmId)
+            end
         end
     end
 end
@@ -369,24 +391,48 @@ end
 function ContractListMod:togglePanel()
     if self.hud ~= nil then
         local visible = self.hud:toggleVisible()
+        self:applyPanelState(visible)
+    end
+end
 
-        -- Show/hide mouse cursor when panel is open
-        if g_inputBinding ~= nil then
-            g_inputBinding:setShowMouseCursor(visible)
-        end
+--- Explicitly close the panel (used by safety auto-close).
+function ContractListMod:closePanel()
+    if self.hud ~= nil and self.hud:getIsVisible() then
+        self.hud:setVisible(false)
+        self:applyPanelState(false)
+    end
+end
 
-        -- Suppress/restore built-in progress bars
-        if self._hudOverridesInstalled then
-            self.suppressBuiltinProgress = visible
-            if visible then
-                -- Panel opened: remove existing bars immediately
-                self:removeExistingProgressBars()
-            else
-                -- Panel closed: clear references so bars get recreated next frame
-                self:clearProgressBarReferences()
-            end
+--- Apply side effects of panel visibility change (cursor, progress bars).
+-- @param visible boolean Whether the panel is now visible
+function ContractListMod:applyPanelState(visible)
+    -- Show/hide mouse cursor when panel is open
+    if g_inputBinding ~= nil then
+        g_inputBinding:setShowMouseCursor(visible)
+    end
+
+    -- Suppress/restore built-in progress bars
+    if self._hudOverridesInstalled then
+        self.suppressBuiltinProgress = visible
+        if visible then
+            -- Panel opened: remove existing bars immediately
+            self:removeExistingProgressBars()
+        else
+            -- Panel closed: clear references so bars get recreated next frame
+            self:clearProgressBarReferences()
         end
     end
+end
+
+--- Check if the game is in a state where our panel should not be shown
+-- (e.g., the ESC menu, any dialog, the map screen, the shop, etc.).
+-- If so, auto-close the panel to prevent cursor/input lockup.
+-- @return boolean True if a GUI screen is active and panel should be hidden
+function ContractListMod:isGameGuiActive()
+    if g_gui ~= nil and g_gui.currentGuiName ~= nil and g_gui.currentGuiName ~= "" then
+        return true
+    end
+    return false
 end
 
 --- Called every frame for logic updates.
@@ -402,11 +448,33 @@ function ContractListMod:update(dt)
     if not self._hudOverridesInstalled then
         self:installProgressBarOverrides()
     end
+
+    -- Safety: auto-close panel if a game GUI/menu is active.
+    -- This prevents the cursor from getting stuck when the user opens
+    -- the ESC menu, shop, map, etc. while our panel is visible.
+    if self.hud ~= nil and self.hud:getIsVisible() then
+        if self:isGameGuiActive() then
+            Logging.info("[ContractList] GUI detected while panel open, auto-closing")
+            self:closePanel()
+        end
+    end
+
+    -- Safety: ensure cursor state matches panel visibility every frame.
+    -- Only do this when no GUI is active (the game manages cursor itself in menus).
+    if self.hud ~= nil and g_inputBinding ~= nil and not self:isGameGuiActive() then
+        local panelVisible = self.hud:getIsVisible()
+        g_inputBinding:setShowMouseCursor(panelVisible)
+    end
 end
 
 --- Called every frame for rendering.
 function ContractListMod:draw()
     if not self.isLoaded then
+        return
+    end
+
+    -- Don't draw over game GUI screens (ESC menu, shop, map, etc.)
+    if self:isGameGuiActive() then
         return
     end
 
@@ -418,6 +486,11 @@ end
 --- Called for mouse input events.
 function ContractListMod:mouseEvent(posX, posY, isDown, isUp, button)
     if not self.isLoaded then
+        return
+    end
+
+    -- Don't consume mouse events when a game GUI is active
+    if self:isGameGuiActive() then
         return
     end
 
