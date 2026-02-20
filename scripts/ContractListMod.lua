@@ -27,8 +27,10 @@ ContractListMod._hudOverridesInstalled = false
 ContractListMod._inputOverridesInstalled = false
 
 -- Cursor management: true if no other mod provides a free cursor toggle.
--- Determined once at load time by checking for CoursePlay / AutoDrive globals.
+-- Detected after a short delay in update() so other mods have time to init.
 ContractListMod._manageCursor = true
+ContractListMod._cursorDetectionDone = false
+ContractListMod._cursorDetectionTimer = 0
 
 --- Called when the map is loaded. Initialize the mod.
 -- @param filename string Map filename
@@ -57,20 +59,6 @@ function ContractListMod:loadMap(filename)
 
     -- Install input capture overrides (block scroll zoom / click-to-switch over panel)
     self:installInputOverrides()
-
-    -- Detect if another mod already provides a free cursor toggle.
-    -- If so, we don't manage the cursor ourselves.
-    self._manageCursor = true
-    if (AutoDrive ~= nil)
-        or (g_autoDrive ~= nil)
-        or (CpGlobalInfoDisplay ~= nil)
-        or (g_courseplay ~= nil)
-        or (Courseplay ~= nil) then
-        self._manageCursor = false
-        Logging.info("[ContractList] Cursor-providing mod detected, not managing cursor")
-    else
-        Logging.info("[ContractList] No cursor mod detected, will show cursor when panel opens")
-    end
 
     self.isLoaded = true
     Logging.info("[ContractList] Mod loaded successfully")
@@ -467,6 +455,27 @@ function ContractListMod:update(dt)
     -- Retry installing progress bar overrides if they weren't ready at load time
     if not self._hudOverridesInstalled then
         self:installProgressBarOverrides()
+    end
+
+    -- Deferred cursor mod detection: wait 2 seconds after load so all mods
+    -- have had time to create their globals, then check once.
+    if not self._cursorDetectionDone then
+        self._cursorDetectionTimer = self._cursorDetectionTimer + dt
+        if self._cursorDetectionTimer > 2000 then
+            self._cursorDetectionDone = true
+            self._manageCursor = true
+
+            if (AutoDrive ~= nil)
+                or (g_autoDrive ~= nil)
+                or (CpGlobalInfoDisplay ~= nil)
+                or (g_courseplay ~= nil)
+                or (Courseplay ~= nil) then
+                self._manageCursor = false
+                Logging.info("[ContractList] Cursor-providing mod detected, not managing cursor")
+            else
+                Logging.info("[ContractList] No cursor mod detected, will show cursor when panel opens")
+            end
+        end
     end
 
     -- Safety: auto-close panel if a game GUI/menu is active.
