@@ -403,14 +403,11 @@ function ContractListMod:closePanel()
     end
 end
 
---- Apply side effects of panel visibility change (cursor, progress bars).
+--- Apply side effects of panel visibility change (progress bars).
+-- The panel does NOT manage the mouse cursor -- cursor visibility is
+-- left to the player / other mods (e.g. right-click or middle-click).
 -- @param visible boolean Whether the panel is now visible
 function ContractListMod:applyPanelState(visible)
-    -- Show/hide mouse cursor when panel is open
-    if g_inputBinding ~= nil then
-        g_inputBinding:setShowMouseCursor(visible)
-    end
-
     -- Suppress/restore built-in progress bars
     if self._hudOverridesInstalled then
         self.suppressBuiltinProgress = visible
@@ -457,13 +454,6 @@ function ContractListMod:update(dt)
             Logging.info("[ContractList] GUI detected while panel open, auto-closing")
             self:closePanel()
         end
-    end
-
-    -- Safety: ensure cursor state matches panel visibility every frame.
-    -- Only do this when no GUI is active (the game manages cursor itself in menus).
-    if self.hud ~= nil and g_inputBinding ~= nil and not self:isGameGuiActive() then
-        local panelVisible = self.hud:getIsVisible()
-        g_inputBinding:setShowMouseCursor(panelVisible)
     end
 end
 
@@ -535,13 +525,6 @@ function ContractListMod:deleteMap()
     -- Remove input bindings
     if g_inputBinding ~= nil then
         g_inputBinding:removeActionEventsByTarget(self)
-    end
-
-    -- Ensure cursor is restored
-    if self.hud ~= nil and self.hud:getIsVisible() then
-        if g_inputBinding ~= nil then
-            g_inputBinding:setShowMouseCursor(false)
-        end
     end
 
     -- Clean up HUD
