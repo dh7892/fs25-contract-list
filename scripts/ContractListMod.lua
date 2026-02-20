@@ -26,6 +26,10 @@ ContractListMod._hudOverridesInstalled = false
 -- Input capture state (prevent scroll zoom and click-to-switch over panel)
 ContractListMod._inputOverridesInstalled = false
 
+-- Cursor management: true if no other mod provides a free cursor toggle.
+-- Determined once at load time by checking for CoursePlay / AutoDrive globals.
+ContractListMod._manageCursor = true
+
 --- Called when the map is loaded. Initialize the mod.
 -- @param filename string Map filename
 function ContractListMod:loadMap(filename)
@@ -53,6 +57,20 @@ function ContractListMod:loadMap(filename)
 
     -- Install input capture overrides (block scroll zoom / click-to-switch over panel)
     self:installInputOverrides()
+
+    -- Detect if another mod already provides a free cursor toggle.
+    -- If so, we don't manage the cursor ourselves.
+    self._manageCursor = true
+    if (AutoDrive ~= nil)
+        or (g_autoDrive ~= nil)
+        or (CpGlobalInfoDisplay ~= nil)
+        or (g_courseplay ~= nil)
+        or (Courseplay ~= nil) then
+        self._manageCursor = false
+        Logging.info("[ContractList] Cursor-providing mod detected, not managing cursor")
+    else
+        Logging.info("[ContractList] No cursor mod detected, will show cursor when panel opens")
+    end
 
     self.isLoaded = true
     Logging.info("[ContractList] Mod loaded successfully")
@@ -403,11 +421,16 @@ function ContractListMod:closePanel()
     end
 end
 
---- Apply side effects of panel visibility change (progress bars).
--- The panel does NOT manage the mouse cursor -- cursor visibility is
--- left to the player / other mods (e.g. right-click or middle-click).
+--- Apply side effects of panel visibility change (cursor, progress bars).
+-- Cursor is only managed if no other mod provides a free cursor toggle
+-- (e.g. CoursePlay, AutoDrive). Detected once at load time.
 -- @param visible boolean Whether the panel is now visible
 function ContractListMod:applyPanelState(visible)
+    -- Show/hide cursor only if we are responsible for it
+    if self._manageCursor and g_inputBinding ~= nil then
+        g_inputBinding:setShowMouseCursor(visible)
+    end
+
     -- Suppress/restore built-in progress bars
     if self._hudOverridesInstalled then
         self.suppressBuiltinProgress = visible
@@ -525,6 +548,13 @@ function ContractListMod:deleteMap()
     -- Remove input bindings
     if g_inputBinding ~= nil then
         g_inputBinding:removeActionEventsByTarget(self)
+    end
+
+    -- Restore cursor if we were managing it and panel was open
+    if self._manageCursor and self.hud ~= nil and self.hud:getIsVisible() then
+        if g_inputBinding ~= nil then
+            g_inputBinding:setShowMouseCursor(false)
+        end
     end
 
     -- Clean up HUD
